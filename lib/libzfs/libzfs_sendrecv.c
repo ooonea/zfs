@@ -3928,6 +3928,12 @@ zfs_receive_package(libzfs_handle_t *hdl, int fd, const char *destname,
 	}
 
 	(void) nvlist_remove_all(stream_nv, "recv_seed_complete");
+	(void) nvlist_remove_all(stream_nv, "recv_dryrun_snaps");
+	if (flags->dryrun) {
+		nvlist_t *snaps = fnvlist_alloc();
+		fnvlist_add_nvlist(stream_nv, "recv_dryrun_snaps", snaps);
+		fnvlist_free(snaps);
+	}
 	recursive = (nvlist_lookup_boolean(stream_nv, "not_recursive") ==
 	    ENOENT);
 	raw = (nvlist_lookup_boolean(stream_nv, "raw") == 0);
@@ -4526,9 +4532,9 @@ recv_seed_origin(libzfs_handle_t *hdl, const char *sendfs,
 	destination[dest_len] = '\0';
 	nvlist_t *fs = fsavl_find(stream_avl, toguid, NULL);
 	if (fs == root) {
-		uint64_t guid = get_snap_guid(hdl, destination,
-		    destsnap + dest_len + 1);
-		if (!flags->dryrun && guid != 0 && guid != toguid &&
+		uint64_t guid = flags->dryrun ? 0 : get_snap_guid(hdl,
+		    destination, destsnap + dest_len + 1);
+		if (guid != 0 && guid != toguid &&
 		    fsavl_find(stream_avl, guid, NULL) == origin_fs) {
 			unsigned int counter = 0;
 			do {
@@ -4603,6 +4609,25 @@ recv_seed_origin(libzfs_handle_t *hdl, const char *sendfs,
 			return (err);
 	}
 	return (0);
+}
+
+static int
+recv_skip_begin(libzfs_handle_t *hdl, int infd, dmu_replay_record_t *drr,
+    recvflags_t *flags, nvlist_t *snaps)
+{
+	void *buf = zfs_alloc(hdl, SPA_MAXBLOCKSIZE);
+	int err = recv_read(hdl, infd, buf, drr->drr_payloadlen,
+	    flags->byteswap, NULL);
+	free(buf);
+	if (err == 0)
+		err = recv_skip(hdl, infd, flags->byteswap);
+	if (err == 0 && snaps != NULL) {
+		char guid[17];
+		(void) snprintf(guid, sizeof (guid), "%" PRIx64,
+		    drr->drr_u.drr_begin.drr_toguid);
+		fnvlist_add_boolean(snaps, guid);
+	}
+	return (err);
 }
 
 /*
@@ -4811,6 +4836,43 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 		goto out;
 	}
 
+	if ((DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
+	    DMU_BACKUP_FEATURE_DEDUP)) {
+		(void) fprintf(stderr,
+		    "ERROR: \"zfs receive\" no longer supports "
+		    "deduplicated send streams.  Use\n"
+		    "the \"zstream redup\" command to convert this stream "
+		    "to a regular,\n"
+		    "non-deduplicated stream.\n");
+		err = zfs_error(hdl, EZFS_NOTSUP, errbuf);
+		goto out;
+	}
+
+	boolean_t resuming = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
+	    DMU_BACKUP_FEATURE_RESUMING;
+	boolean_t raw = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
+	    DMU_BACKUP_FEATURE_RAW;
+	boolean_t embedded = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
+	    DMU_BACKUP_FEATURE_EMBED_DATA;
+	nvlist_t *dryrun_snaps = NULL;
+	if (flags->dryrun && stream_nv != NULL) {
+		char guid[17];
+		(void) nvlist_lookup_nvlist(stream_nv, "recv_dryrun_snaps",
+		    &dryrun_snaps);
+		(void) snprintf(guid, sizeof (guid), "%" PRIx64,
+		    drrb->drr_fromguid);
+		if (originsnap == NULL && !flags->heal &&
+		    dryrun_snaps != NULL && nvlist_exists(dryrun_snaps, guid)) {
+			if (flags->verbose)
+				(void) printf("would receive incremental "
+				    "stream of %s into %s\n",
+				    drrb->drr_toname, destsnap);
+			err = recv_skip_begin(hdl, infd, drr, flags,
+			    dryrun_snaps);
+			goto out;
+		}
+	}
+
 	/*
 	 * Determine the name of the origin snapshot.
 	 */
@@ -4832,24 +4894,6 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 			(void) printf("found clone origin %s\n", origin);
 	}
 
-	if ((DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
-	    DMU_BACKUP_FEATURE_DEDUP)) {
-		(void) fprintf(stderr,
-		    "ERROR: \"zfs receive\" no longer supports "
-		    "deduplicated send streams.  Use\n"
-		    "the \"zstream redup\" command to convert this stream "
-		    "to a regular,\n"
-		    "non-deduplicated stream.\n");
-		err = zfs_error(hdl, EZFS_NOTSUP, errbuf);
-		goto out;
-	}
-
-	boolean_t resuming = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
-	    DMU_BACKUP_FEATURE_RESUMING;
-	boolean_t raw = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
-	    DMU_BACKUP_FEATURE_RAW;
-	boolean_t embedded = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
-	    DMU_BACKUP_FEATURE_EMBED_DATA;
 	boolean_t clone_incremental =
 	    (drrb->drr_flags & DRR_FLAG_CLONE) &&
 	    strcspn(origin, "@") == strcspn(destsnap, "@") &&
@@ -5228,22 +5272,7 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 	}
 
 	if (flags->dryrun) {
-		void *buf = zfs_alloc(hdl, SPA_MAXBLOCKSIZE);
-
-		/*
-		 * We have read the DRR_BEGIN record, but we have
-		 * not yet read the payload. For non-dryrun sends
-		 * this will be done by the kernel, so we must
-		 * emulate that here, before attempting to read
-		 * more records.
-		 */
-		err = recv_read(hdl, infd, buf, drr->drr_payloadlen,
-		    flags->byteswap, NULL);
-		free(buf);
-		if (err != 0)
-			goto out;
-
-		err = recv_skip(hdl, infd, flags->byteswap);
+		err = recv_skip_begin(hdl, infd, drr, flags, dryrun_snaps);
 		goto out;
 	}
 
