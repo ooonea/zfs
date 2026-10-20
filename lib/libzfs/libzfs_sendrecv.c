@@ -4618,7 +4618,7 @@ recv_seed_origin(libzfs_handle_t *hdl, const char *sendfs,
 
 static int
 recv_skip_begin(libzfs_handle_t *hdl, int infd, dmu_replay_record_t *drr,
-    recvflags_t *flags, nvlist_t *snaps)
+    recvflags_t *flags, nvlist_t *snaps, const char *destsnap)
 {
 	void *buf = zfs_alloc(hdl, SPA_MAXBLOCKSIZE);
 	int err = recv_read(hdl, infd, buf, drr->drr_payloadlen,
@@ -4630,7 +4630,7 @@ recv_skip_begin(libzfs_handle_t *hdl, int infd, dmu_replay_record_t *drr,
 		char guid[17];
 		(void) snprintf(guid, sizeof (guid), "%" PRIx64,
 		    drr->drr_u.drr_begin.drr_toguid);
-		fnvlist_add_boolean(snaps, guid);
+		fnvlist_add_string(snaps, guid, destsnap);
 	}
 	return (err);
 }
@@ -4860,22 +4860,16 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 	boolean_t embedded = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
 	    DMU_BACKUP_FEATURE_EMBED_DATA;
 	nvlist_t *dryrun_snaps = NULL;
+	const char *dryrun_base = NULL;
 	if (flags->dryrun && stream_nv != NULL) {
 		char guid[17];
 		(void) nvlist_lookup_nvlist(stream_nv, "recv_dryrun_snaps",
 		    &dryrun_snaps);
 		(void) snprintf(guid, sizeof (guid), "%" PRIx64,
 		    drrb->drr_fromguid);
-		if (originsnap == NULL && !flags->heal &&
-		    dryrun_snaps != NULL && nvlist_exists(dryrun_snaps, guid)) {
-			if (flags->verbose)
-				(void) printf("would receive incremental "
-				    "stream of %s into %s\n",
-				    drrb->drr_toname, destsnap);
-			err = recv_skip_begin(hdl, infd, drr, flags,
-			    dryrun_snaps);
-			goto out;
-		}
+		if (dryrun_snaps != NULL)
+			(void) nvlist_lookup_string(dryrun_snaps, guid,
+			    &dryrun_base);
 	}
 
 	/*
@@ -4886,6 +4880,9 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 		if (flags->verbose)
 			(void) printf("using provided clone origin %s\n",
 			    origin);
+	} else if (dryrun_base != NULL &&
+	    (drrb->drr_flags & DRR_FLAG_CLONE)) {
+		(void) strlcpy(origin, dryrun_base, sizeof (origin));
 	} else if (drrb->drr_flags & DRR_FLAG_CLONE) {
 		if (guid_to_name(hdl, destsnap,
 		    drrb->drr_fromguid, B_FALSE, origin) != 0) {
@@ -5001,6 +4998,8 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 			err = zfs_error(hdl, EZFS_WRONG_PARENT, errbuf);
 			goto out;
 		}
+	} else if (dryrun_base != NULL && originsnap == NULL) {
+		newfs = stream_wantsnewfs;
 	} else if (zfs_dataset_exists(hdl, name, ZFS_TYPE_DATASET)) {
 		zfs_cmd_t zc = {"\0"};
 		zfs_handle_t *zhp = NULL;
@@ -5277,7 +5276,8 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 	}
 
 	if (flags->dryrun) {
-		err = recv_skip_begin(hdl, infd, drr, flags, dryrun_snaps);
+		err = recv_skip_begin(hdl, infd, drr, flags, dryrun_snaps,
+		    destsnap);
 		goto out;
 	}
 
