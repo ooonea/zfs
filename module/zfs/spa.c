@@ -7734,10 +7734,9 @@ spa_export_common(const char *pool, int new_state, nvlist_t **oldconfig,
 	 * modify its state.  Objsets may be open only because they're dirty,
 	 * so we have to force it to sync before checking spa_refcnt.
 	 */
-	if (spa->spa_sync_on) {
+	if (spa->spa_sync_on)
 		txg_wait_synced(spa->spa_dsl_pool, 0);
-		spa_evicting_os_wait(spa);
-	}
+	spa_evicting_os_wait(spa);
 
 	/*
 	 * A pool cannot be exported or destroyed if there are active
