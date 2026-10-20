@@ -1454,16 +1454,20 @@ dump_filesystems(zfs_handle_t *rzhp, send_dump_data_t *sdd)
 	}
 	const char *root_origin = rzhp->zfs_dmustats.dds_origin;
 	size_t root_len = strlen(rzhp->zfs_name);
-	if (sdd->fromsnap == NULL &&
-	    strncmp(root_origin, rzhp->zfs_name, root_len) == 0 &&
+	if (strncmp(root_origin, rzhp->zfs_name, root_len) == 0 &&
 	    root_origin[root_len] == '/') {
 		zfs_handle_t *origin = zfs_open(rzhp->zfs_hdl, root_origin,
 		    ZFS_TYPE_SNAPSHOT);
 		if (origin == NULL)
 			return (-1);
-		seed_guid = origin->zfs_dmustats.dds_guid;
+		if (sdd->fromsnap == NULL ||
+		    get_snap_txg(rzhp->zfs_hdl, rzhp->zfs_name,
+		    sdd->fromsnap) >= zfs_prop_get_int(origin,
+		    ZFS_PROP_CREATETXG))
+			seed_guid = origin->zfs_dmustats.dds_guid;
 		zfs_close(origin);
-		seed_fs = fsavl_find(sdd->fsavl, seed_guid, &seed_snap);
+		if (sdd->fromsnap == NULL)
+			seed_fs = fsavl_find(sdd->fsavl, seed_guid, &seed_snap);
 		if (seed_fs != NULL) {
 			zfs_handle_t *zhp = zfs_open(rzhp->zfs_hdl,
 			    fnvlist_lookup_string(seed_fs, "name"),
