@@ -4550,9 +4550,8 @@ recv_seed_origin(libzfs_handle_t *hdl, const char *sendfs,
 		    fsavl_find(stream_avl, guid, NULL) == origin_fs) {
 			unsigned int counter = 0;
 			do {
-				if (snprintf(origin, sizeof (origin),
-				    "%s@recv-%" PRIx64 "-%u", destination,
-				    guid, counter++) >= sizeof (origin))
+				if (snprintf(origin, sizeof (origin), "%s@%x",
+				    destination, counter++) >= sizeof (origin))
 					return (ENAMETOOLONG);
 			} while (strcmp(origin, destsnap) == 0 ||
 			    zfs_dataset_exists(hdl, origin, ZFS_TYPE_SNAPSHOT));
