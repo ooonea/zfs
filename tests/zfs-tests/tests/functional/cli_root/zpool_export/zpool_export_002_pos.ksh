@@ -56,6 +56,8 @@ log_onexit cleanup
 
 log_assert "Verify a busy ZPOOL cannot be exported."
 
+default_setup_noexit "${DISKS%% *}"
+
 log_must ismounted "$TESTPOOL/$TESTFS"
 log_must cd $TESTDIR
 log_mustnot zpool export $TESTPOOL
