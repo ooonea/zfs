@@ -4515,17 +4515,35 @@ recv_seed_origin(libzfs_handle_t *hdl, const char *sendfs,
 	if (strncmp(origin_name, sendfs, root_len) != 0 ||
 	    origin_name[root_len] != '/')
 		return (0);
+	size_t dest_len = strcspn(destsnap, "@");
+	if (dest_len >= sizeof (destination))
+		return (ENAMETOOLONG);
+	(void) strlcpy(destination, destsnap, sizeof (destination));
+	destination[dest_len] = '\0';
 	nvlist_t *fs = fsavl_find(stream_avl, toguid, NULL);
 	if (fs == root) {
+		uint64_t guid = get_snap_guid(hdl, destination,
+		    destsnap + dest_len + 1);
+		if (!flags->dryrun && guid != 0 && guid != toguid &&
+		    fsavl_find(stream_avl, guid, NULL) == origin_fs) {
+			unsigned int counter = 0;
+			do {
+				if (snprintf(origin, sizeof (origin),
+				    "%s@recv-%" PRIx64 "-%u", destination,
+				    guid, counter++) >= sizeof (origin))
+					return (ENAMETOOLONG);
+			} while (strcmp(origin, destsnap) == 0 ||
+			    zfs_dataset_exists(hdl, origin, ZFS_TYPE_SNAPSHOT));
+			err = lzc_rename(destsnap, origin);
+			if (err != 0)
+				return (err);
+		}
 		fnvlist_add_boolean(stream_nv, "recv_seed_complete");
 		return (0);
 	}
 	if (fs != origin_fs)
 		return (0);
-	size_t dest_len = strcspn(destsnap, "@");
 	size_t suffix_len = strlen(origin_name) - root_len;
-	if (dest_len >= sizeof (destination))
-		return (ENAMETOOLONG);
 	if (dest_len < suffix_len)
 		return (EINVAL);
 	if (!nvlist_exists(stream_nv, "recv_seed_complete")) {
@@ -4562,7 +4580,25 @@ recv_seed_origin(libzfs_handle_t *hdl, const char *sendfs,
 		return (-1);
 	err = zfs_promote(zhp);
 	zfs_close(zhp);
-	return (err);
+	if (err != 0)
+		return (err);
+	nvlist_t *snaps = fnvlist_lookup_nvlist(origin_fs, "snaps");
+	pair = NULL;
+	while ((pair = nvlist_next_nvpair(snaps, pair)) != NULL) {
+		char restored[ZFS_MAX_DATASET_NAME_LEN];
+		if (guid_to_name(hdl, destsnap, fnvpair_value_uint64(pair),
+		    B_FALSE, origin) != 0 ||
+		    strcspn(origin, "@") != dest_len ||
+		    strncmp(origin, destination, dest_len) != 0)
+			continue;
+		if (snprintf(restored, sizeof (restored), "%s@%s",
+		    destination, nvpair_name(pair)) >= sizeof (restored))
+			return (ENAMETOOLONG);
+		if (strcmp(origin, restored) != 0 &&
+		    (err = lzc_rename(origin, restored)) != 0)
+			return (err);
+	}
+	return (0);
 }
 
 /*
@@ -4766,7 +4802,8 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 	err = recv_seed_origin(hdl, sendfs, stream_nv, stream_avl,
 	    drrb->drr_toguid, flags, destsnap);
 	if (err != 0) {
-		(void) zfs_error(hdl, EZFS_BADRESTORE, errbuf);
+		if (err > 0)
+			(void) zfs_standard_error(hdl, err, errbuf);
 		goto out;
 	}
 
