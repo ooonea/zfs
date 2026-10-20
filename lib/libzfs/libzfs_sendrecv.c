@@ -4677,10 +4677,16 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 	    DMU_BACKUP_FEATURE_RAW;
 	boolean_t embedded = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
 	    DMU_BACKUP_FEATURE_EMBED_DATA;
+	boolean_t clone_incremental =
+	    (drrb->drr_flags & DRR_FLAG_CLONE) &&
+	    strcspn(origin, "@") == strcspn(destsnap, "@") &&
+	    strncmp(origin, destsnap, strcspn(destsnap, "@")) == 0;
 	stream_wantsnewfs = (drrb->drr_fromguid == 0 ||
-	    (drrb->drr_flags & DRR_FLAG_CLONE) || originsnap) && !resuming;
+	    ((drrb->drr_flags & DRR_FLAG_CLONE) && !clone_incremental) ||
+	    originsnap) && !resuming;
 	stream_resumingnewfs = (drrb->drr_fromguid == 0 ||
-	    (drrb->drr_flags & DRR_FLAG_CLONE) || originsnap) && resuming;
+	    ((drrb->drr_flags & DRR_FLAG_CLONE) && !clone_incremental) ||
+	    originsnap) && resuming;
 
 	if (stream_wantsnewfs) {
 		/*

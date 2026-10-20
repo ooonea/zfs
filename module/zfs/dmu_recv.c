@@ -716,10 +716,27 @@ dmu_recv_begin_check(void *arg, dmu_tx_t *tx)
 	if (error == 0) {
 		/* target fs already exists; recv into temp clone */
 
-		/* Can't recv a clone into an existing fs */
 		if (flags & DRR_FLAG_CLONE || drba->drba_origin) {
-			dsl_dataset_rele_flags(ds, dsflags, FTAG);
-			return (SET_ERROR(EINVAL));
+			dsl_dataset_t *origin;
+
+			if (drba->drba_origin == NULL || fromguid == 0) {
+				dsl_dataset_rele_flags(ds, dsflags, FTAG);
+				return (SET_ERROR(EINVAL));
+			}
+			error = dsl_dataset_hold_flags(dp, drba->drba_origin,
+			    dsflags, FTAG, &origin);
+			if (error == 0) {
+				if (!origin->ds_is_snapshot ||
+				    origin->ds_dir != ds->ds_dir ||
+				    dsl_dataset_phys(origin)->ds_guid !=
+				    fromguid)
+					error = SET_ERROR(EINVAL);
+				dsl_dataset_rele_flags(origin, dsflags, FTAG);
+			}
+			if (error != 0) {
+				dsl_dataset_rele_flags(ds, dsflags, FTAG);
+				return (error);
+			}
 		}
 
 		error = recv_begin_check_existing_impl(drba, ds, fromguid,
