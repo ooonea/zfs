@@ -236,7 +236,11 @@ case "$1" in
     sudo apt-get install -yq linux-tools-common libtirpc-dev
     # The runners (ONLY_DEPS) do not need linux-modules-extra
     if [ -z "${ONLY_DEPS:-}" ] ; then
-      sudo apt-get install -yq linux-modules-extra-$(uname -r)
+      modules="linux-modules-extra-$(uname -r)"
+      if ! apt-cache show "$modules" >/dev/null 2>&1; then
+        modules="linux-modules-$(uname -r)"
+      fi
+      sudo apt-get install -yq "$modules"
     fi
     sudo apt-get install -yq dh-sequence-dkms
 
