@@ -4532,8 +4532,9 @@ recv_seed_origin(libzfs_handle_t *hdl, const char *sendfs,
 	destination[dest_len] = '\0';
 	nvlist_t *fs = fsavl_find(stream_avl, toguid, NULL);
 	if (fs == root) {
-		uint64_t guid = flags->dryrun ? 0 : get_snap_guid(hdl,
-		    destination, destsnap + dest_len + 1);
+		uint64_t guid = flags->dryrun ||
+		    !zfs_dataset_exists(hdl, destsnap, ZFS_TYPE_SNAPSHOT) ?
+		    0 : get_snap_guid(hdl, destination, destsnap + dest_len + 1);
 		if (guid != 0 && guid != toguid &&
 		    fsavl_find(stream_avl, guid, NULL) == origin_fs) {
 			unsigned int counter = 0;
