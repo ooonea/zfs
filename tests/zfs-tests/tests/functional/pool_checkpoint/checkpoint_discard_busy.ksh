@@ -105,6 +105,7 @@ log_mustnot zpool reguid $NESTEDPOOL
 
 # reset to original value
 log_must restore_tunable SPA_DISCARD_MEMORY_LIMIT
+log_onexit cleanup_nested_pools
 
 nested_wait_discard_finish
 
