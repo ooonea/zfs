@@ -213,7 +213,8 @@ zfs_other_serd_cases(fmd_hdl_t *hdl, const zfs_case_data_t *zfs_case)
 		/*
 		 * must be same pool and parent vdev but different leaf vdev
 		 */
-		if (zcd->zc_pool_guid != zfs_case->zc_pool_guid ||
+		if (fmd_case_solved(hdl, zcp->zc_case) ||
+		    zcd->zc_pool_guid != zfs_case->zc_pool_guid ||
 		    zcd->zc_parent_guid != zfs_case->zc_parent_guid ||
 		    zcd->zc_vdev_guid == zfs_case->zc_vdev_guid) {
 			continue;
@@ -224,15 +225,18 @@ zfs_other_serd_cases(fmd_hdl_t *hdl, const zfs_case_data_t *zfs_case)
 		 *
 		 * Only one serd engine will be assigned to the case
 		 */
-		if (zcd->zc_serd_checksum[0] == zfs_case->zc_serd_checksum[0] &&
+		if (zcd->zc_serd_checksum[0] != '\0' &&
+		    zfs_case->zc_serd_checksum[0] != '\0' &&
 		    fmd_serd_active(hdl, zcd->zc_serd_checksum)) {
 			cases++;
 		}
-		if (zcd->zc_serd_io[0] == zfs_case->zc_serd_io[0] &&
+		if (zcd->zc_serd_io[0] != '\0' &&
+		    zfs_case->zc_serd_io[0] != '\0' &&
 		    fmd_serd_active(hdl, zcd->zc_serd_io)) {
 			cases++;
 		}
-		if (zcd->zc_serd_slow_io[0] == zfs_case->zc_serd_slow_io[0] &&
+		if (zcd->zc_serd_slow_io[0] != '\0' &&
+		    zfs_case->zc_serd_slow_io[0] != '\0' &&
 		    fmd_serd_active(hdl, zcd->zc_serd_slow_io)) {
 			cases++;
 		}
