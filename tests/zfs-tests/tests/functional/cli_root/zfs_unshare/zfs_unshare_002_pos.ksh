@@ -45,12 +45,15 @@
 
 verify_runnable "global"
 
-if is_linux; then
-	log_unsupported "zfs set sharenfs=off won't unshare if already off"
-fi
+typeset exports_file
 
 function cleanup
 {
+	if [[ -n $exports_file ]]; then
+		log_must rm -f "$exports_file"
+		log_must exportfs -ra
+	fi
+
 	typeset -i i=0
 	while (( i < ${#mntp_fs[*]} )); do
 		is_shared ${mntp_fs[i]} && \
@@ -110,6 +113,7 @@ function test_legacy_unshare # <mntp> <filesystem>
 	is_shared $mntp || \
 	    log_fail "'zfs unshare <mountpoint>' fails to be aware" \
 	    "of legacy share."
+	log_must unshare_nfs $mntp
 }
 
 
@@ -154,6 +158,17 @@ done
 #
 # Share each of the file systems via legacy share.
 #
+if is_linux; then
+	log_must mkdir -p /etc/exports.d
+	exports_file=$(mktemp /etc/exports.d/zfs-unshare-XXXXXX.exports)
+	[[ -n $exports_file ]] || log_fail "Cannot create legacy exports file"
+	for mntp in "$TESTDIR" "$TESTDIR1" "$TESTDIR2"; do
+		log_must eval "printf '%s *(rw,sync,no_subtree_check)\n' \
+		    '$mntp' >> '$exports_file'"
+	done
+	log_must exportfs -ra
+fi
+
 i=0
 while (( i < ${#mntp_fs[*]} )); do
         share_nfs ${mntp_fs[i]}
