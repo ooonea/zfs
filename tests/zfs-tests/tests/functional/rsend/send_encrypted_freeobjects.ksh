@@ -37,6 +37,15 @@
 #
 verify_runnable "both"
 
+# Reuse one CPU's dnode allocation chunk across the snapshot.
+if is_linux; then
+	cpu=$(taskset -pc $$ | awk -F '[:,-] *' '{print $2}')
+	log_must taskset -pc $cpu $$
+elif is_freebsd; then
+	cpu=$(cpuset -g -p $$ | head -n 1 | awk -F '[:,-] *' '{print $2}')
+	log_must cpuset -l $cpu -p $$
+fi
+
 function create_object_with_num
 {
 	file=$1
