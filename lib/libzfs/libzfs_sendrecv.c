@@ -3631,6 +3631,7 @@ again:
 		uint64_t fromguid = 0;
 		uint64_t originguid = 0;
 		uint64_t stream_originguid = 0;
+		boolean_t promote_conflict = B_FALSE;
 		uint64_t parent_fromsnap_guid, stream_parent_fromsnap_guid;
 		const char *fsname, *stream_fsname;
 
@@ -3677,6 +3678,8 @@ again:
 				    flags);
 				if (error == 0)
 					progress = B_TRUE;
+				else if (errno == EEXIST)
+					promote_conflict = B_TRUE;
 				break;
 			}
 			default:
@@ -3687,12 +3690,12 @@ again:
 				return (-1);
 			}
 			/*
-			 * We had/have the wrong origin, therefore our
-			 * list of snapshots is wrong.  Need to handle
-			 * them on the next pass.
+			 * Refresh snapshots after promotion. On a name
+			 * conflict, first rename snapshots before retrying.
 			 */
 			needagain = B_TRUE;
-			continue;
+			if (!promote_conflict)
+				continue;
 		}
 
 		for (snapelem = nvlist_next_nvpair(snaps, NULL);
@@ -4534,7 +4537,8 @@ recv_seed_origin(libzfs_handle_t *hdl, const char *sendfs,
 	if (fs == root) {
 		uint64_t guid = flags->dryrun ||
 		    !zfs_dataset_exists(hdl, destsnap, ZFS_TYPE_SNAPSHOT) ?
-		    0 : get_snap_guid(hdl, destination, destsnap + dest_len + 1);
+		    0 : get_snap_guid(hdl, destination,
+		    destsnap + dest_len + 1);
 		if (guid != 0 && guid != toguid &&
 		    fsavl_find(stream_avl, guid, NULL) == origin_fs) {
 			unsigned int counter = 0;
