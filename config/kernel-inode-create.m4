@@ -1,5 +1,18 @@
 dnl # SPDX-License-Identifier: CDDL-1.0
 AC_DEFUN([ZFS_AC_KERNEL_SRC_CREATE], [
+	ZFS_LINUX_TEST_SRC([create_no_flag], [
+		#include <linux/fs.h>
+
+		static int inode_create(struct mnt_idmap *idmap,
+		    struct inode *inode, struct dentry *dentry,
+		    umode_t mode) { return 0; }
+
+		static const struct inode_operations
+		    iops __attribute__((unused)) = {
+			.create = inode_create,
+		};
+	],[])
+
 	dnl #
 	dnl # 6.3 API change
 	dnl # The first arg is changed to struct mnt_idmap *
@@ -74,7 +87,16 @@ AC_DEFUN([ZFS_AC_KERNEL_CREATE], [
 			ZFS_LINUX_TEST_RESULT([create_flags], [
 				AC_MSG_RESULT(yes)
 			],[
-				ZFS_LINUX_TEST_ERROR([iops->create()])
+				AC_MSG_CHECKING([whether iops->create() omits flags])
+				ZFS_LINUX_TEST_RESULT([create_no_flag], [
+					AC_MSG_RESULT(yes)
+					AC_DEFINE(HAVE_IOPS_CREATE_IDMAP, 1,
+					    [iops->create() takes struct mnt_idmap*])
+					AC_DEFINE(HAVE_IOPS_CREATE_NO_FLAG_ARG, 1,
+					    [iops->create() omits flags])
+				],[
+					ZFS_LINUX_TEST_ERROR([iops->create()])
+				])
 			])
 		])
 	])

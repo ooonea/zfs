@@ -165,7 +165,10 @@ is_nametoolong(struct dentry *dentry)
 }
 
 static int
-#ifdef HAVE_IOPS_CREATE_USERNS
+#ifdef HAVE_IOPS_CREATE_NO_FLAG_ARG
+zpl_create(struct mnt_idmap *user_ns, struct inode *dir,
+    struct dentry *dentry, umode_t mode)
+#elif defined(HAVE_IOPS_CREATE_USERNS)
 zpl_create(struct user_namespace *user_ns, struct inode *dir,
     struct dentry *dentry, umode_t mode, bool flag)
 #elif defined(HAVE_IOPS_CREATE_IDMAP)
