@@ -27,6 +27,7 @@
 #include <sys/vfs.h>
 #include <sys/zpl.h>
 #include <sys/file.h>
+#include <sys/u8_textprep.h>
 
 static struct dentry *
 zpl_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
@@ -70,7 +71,8 @@ zpl_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
 	/* Normalization and case folding both require the stored name. */
 	if (zfsvfs->z_case == ZFS_CASE_INSENSITIVE)
 		zfs_flags = FIGNORECASE;
-	if (zfsvfs->z_norm) {
+	if (zfsvfs->z_case == ZFS_CASE_INSENSITIVE ||
+	    (zfsvfs->z_norm & ~U8_TEXTPREP_TOUPPER)) {
 		pn_alloc(&pn);
 		ppn = &pn;
 	}
@@ -327,7 +329,8 @@ zpl_unlink(struct inode *dir, struct dentry *dentry)
 	 * For normalized names, invalidate the dentry to prevent the
 	 * creation of negative entries.
 	 */
-	if (error == 0 && zfsvfs->z_norm)
+	if (error == 0 && (zfsvfs->z_case == ZFS_CASE_INSENSITIVE ||
+	    (zfsvfs->z_norm & ~U8_TEXTPREP_TOUPPER)))
 		d_invalidate(dentry);
 
 	spl_fstrans_unmark(cookie);
@@ -406,7 +409,8 @@ zpl_rmdir(struct inode *dir, struct dentry *dentry)
 	 * For normalized names, invalidate the dentry to prevent the
 	 * creation of negative entries.
 	 */
-	if (error == 0 && zfsvfs->z_norm)
+	if (error == 0 && (zfsvfs->z_case == ZFS_CASE_INSENSITIVE ||
+	    (zfsvfs->z_norm & ~U8_TEXTPREP_TOUPPER)))
 		d_invalidate(dentry);
 
 	spl_fstrans_unmark(cookie);
