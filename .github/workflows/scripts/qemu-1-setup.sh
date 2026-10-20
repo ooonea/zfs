@@ -46,8 +46,12 @@ cat /etc/apt/apt-mirrors.txt
 # install needed packages
 export DEBIAN_FRONTEND="noninteractive"
 sudo apt-get -y update
+modules="linux-modules-extra-$(uname -r)"
+if ! apt-cache show "$modules" >/dev/null 2>&1; then
+  modules="linux-modules-$(uname -r)"
+fi
 sudo apt-get install -y axel cloud-image-utils daemonize guestfs-tools \
-  virt-manager linux-modules-extra-$(uname -r) zfsutils-linux
+  virt-manager "$modules" zfsutils-linux
 
 # generate ssh keys
 rm -f ~/.ssh/id_ed25519
