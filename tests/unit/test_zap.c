@@ -1614,6 +1614,12 @@ test_norm_legacy_match_case(const MunitParameter params[], void *arg)
 			uint64_t value = 42;
 			uint64_t result = 0;
 			unit_ok(zap_add_by_dnode(dn, stored, 8, 1, &value, tx));
+			zap_cursor_t cursor;
+			zap_attribute_t *attribute = zap_attribute_alloc();
+			unit_ok(zap_cursor_init_by_dnode(&cursor, dn));
+			unit_ok(zap_cursor_retrieve(&cursor, attribute));
+			uint64_t before = zap_cursor_serialize(&cursor);
+			zap_cursor_fini(&cursor);
 			if (i < 2) {
 				unit_err(zap_lookup_norm_by_dnode(dn, query,
 				    8, 1, &result, MT_NORMALIZE, NULL, 0, NULL),
@@ -1623,10 +1629,90 @@ test_norm_legacy_match_case(const MunitParameter params[], void *arg)
 			    &result, MT_NORMALIZE | MT_MATCH_CASE,
 			    NULL, 0, NULL));
 			unit_eq(result, value);
+			if (i < 2) {
+				unit_err(zap_lookup_norm_by_dnode(dn, query,
+				    8, 1, &result, MT_NORMALIZE, NULL, 0, NULL),
+				    ENOENT);
+			}
+			if (mock_zap_is_microzap(dn)) {
+				uint16_t upgrade = 0;
+				unit_ok(zap_add_by_dnode(dn, "_upgrade",
+				    2, 1, &upgrade, tx));
+				unit_ok(zap_remove_by_dnode(dn,
+				    "_upgrade", tx));
+				unit_ok(zap_lookup_norm_by_dnode(dn, query,
+				    8, 1, &result, MT_NORMALIZE | MT_MATCH_CASE,
+				    NULL, 0, NULL));
+				unit_eq(result, value);
+			}
+			unit_ok(zap_cursor_init_by_dnode(&cursor, dn));
+			unit_ok(zap_cursor_retrieve(&cursor, attribute));
+			unit_eq(zap_cursor_serialize(&cursor), before);
+			zap_cursor_fini(&cursor);
+			zap_attribute_free(attribute);
+			unit_ok(zap_remove_norm_by_dnode(dn, query,
+			    MT_NORMALIZE | MT_MATCH_CASE, tx));
+			unit_ok(zap_count_by_dnode(dn, &result));
+			unit_zero(result);
 			mock_tx_destroy((mock_dmu_tx_t *)tx);
 			mock_zap_destroy(dn);
 		}
 	}
+	return (MUNIT_OK);
+}
+
+static MunitResult
+test_norm_match_case_conflict(const MunitParameter params[], void *arg)
+{
+	(void) arg;
+	const char *names[] = {
+		"o\xef\xac\x83" "ce", "O\xef\xac\x83" "CE", "office"
+	};
+	dnode_t *dn = mock_zap_create_norm_params(params, "type",
+	    U8_TEXTPREP_NFKD | U8_TEXTPREP_TOUPPER);
+	dmu_tx_t *tx = (dmu_tx_t *)mock_tx_create();
+	for (int i = 0; i < ARRAY_SIZE(names); i++) {
+		uint64_t value = i + 1;
+		unit_ok(zap_add_by_dnode(dn, names[i], 8, 1, &value, tx));
+	}
+	uint64_t result = 0;
+	boolean_t conflict = B_FALSE;
+	matchtype_t match = MT_NORMALIZE | MT_MATCH_CASE;
+	unit_err(zap_lookup_norm_by_dnode(dn, "OFFICE", 8, 1,
+	    &result, match, NULL, 0, &conflict), ENOENT);
+	unit_ok(zap_lookup_norm_by_dnode(dn, "office", 8, 1,
+	    &result, match, NULL, 0, &conflict));
+	unit_true(conflict);
+	unit_ok(zap_lookup_norm_by_dnode(dn, "OffiCE", 8, 1,
+	    &result, match, NULL, 0, &conflict));
+	unit_eq(result, 2);
+	unit_false(conflict);
+	zap_cursor_t cursor;
+	zap_attribute_t *attribute = zap_attribute_alloc();
+	unit_ok(zap_cursor_init_by_dnode(&cursor, dn));
+	for (int i = 0; i < ARRAY_SIZE(names); i++) {
+		unit_ok(zap_cursor_retrieve(&cursor, attribute));
+		unit_eq(attribute->za_normalization_conflict,
+		    strcmp(attribute->za_name, "office") != 0);
+		zap_cursor_advance(&cursor);
+	}
+	unit_err(zap_cursor_retrieve(&cursor, attribute), ENOENT);
+	zap_cursor_fini(&cursor);
+	zap_attribute_free(attribute);
+	unit_ok(zap_remove_by_dnode(dn, names[0], tx));
+	unit_ok(zap_lookup_norm_by_dnode(dn, "OffiCE", 8, 1,
+	    &result, match, NULL, 0, &conflict));
+	unit_eq(result, 2);
+	unit_false(conflict);
+	unit_ok(zap_lookup_norm_by_dnode(dn, "office", 8, 1,
+	    &result, match, NULL, 0, &conflict));
+	unit_eq(result, 3);
+	unit_false(conflict);
+	unit_ok(zap_remove_norm_by_dnode(dn, "OffiCE", match, tx));
+	unit_ok(zap_lookup_by_dnode(dn, "office", 8, 1, &result));
+	unit_eq(result, 3);
+	mock_tx_destroy((mock_dmu_tx_t *)tx);
+	mock_zap_destroy(dn);
 	return (MUNIT_OK);
 }
 
@@ -1774,6 +1860,8 @@ static const MunitTest zap_tests[] = {
 	UNIT_TEST("norm_compare",		test_norm_compare),
 	UNIT_TEST("norm_compare_bounds",	test_norm_compare_bounds),
 	UNIT_TEST("norm_legacy_match_case", test_norm_legacy_match_case,
+	    zap_type_params),
+	UNIT_TEST("norm_match_case_conflict", test_norm_match_case_conflict,
 	    zap_type_params),
 	UNIT_TEST("norm_toupper",	test_norm_toupper, zap_type_params),
 	UNIT_TEST("norm_match_case",	test_norm_match_case, zap_type_params),
