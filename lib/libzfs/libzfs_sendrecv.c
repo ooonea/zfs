@@ -4845,6 +4845,17 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 		err = zfs_error(hdl, EZFS_INVALIDNAME, errbuf);
 		goto out;
 	}
+	if (drrb->drr_type == DMU_OST_ZVOL) {
+		type = ZFS_TYPE_VOLUME;
+	} else if (drrb->drr_type == DMU_OST_ZFS) {
+		type = ZFS_TYPE_FILESYSTEM;
+	} else {
+		zfs_error_aux(hdl,
+		    "invalid record type: 0x%d", drrb->drr_type);
+		err = zfs_error(hdl, EZFS_BADSTREAM, errbuf);
+		goto out;
+	}
+
 	err = recv_seed_origin(hdl, sendfs, stream_nv, stream_avl,
 	    drrb->drr_toguid, flags, destsnap, state);
 	if (err != 0) {
@@ -5253,16 +5264,6 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 			*top_zfs = zfs_strdup(hdl, name);
 	}
 
-	if (drrb->drr_type == DMU_OST_ZVOL) {
-		type = ZFS_TYPE_VOLUME;
-	} else if (drrb->drr_type == DMU_OST_ZFS) {
-		type = ZFS_TYPE_FILESYSTEM;
-	} else {
-		zfs_error_aux(hdl,
-		    "invalid record type: 0x%d", drrb->drr_type);
-		err = zfs_error(hdl, EZFS_BADSTREAM, errbuf);
-		goto out;
-	}
 	if ((err = zfs_setup_cmdline_props(hdl, type, name, zoned, recursive,
 	    stream_wantsnewfs, raw, toplevel, rcvprops, cmdprops, origprops,
 	    &oxprops, &wkeydata, &wkeylen, errbuf)) != 0)
