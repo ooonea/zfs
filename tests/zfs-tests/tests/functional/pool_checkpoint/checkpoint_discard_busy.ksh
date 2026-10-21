@@ -39,7 +39,6 @@
 
 verify_runnable "global"
 
-log_unsupported "Skipping, issue https://github.com/openzfs/zfs/issues/12053"
 
 function test_cleanup
 {
