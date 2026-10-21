@@ -1589,6 +1589,48 @@ static const MunitParameterEnum zap_type_params[] = {
 	UNIT_TEST(name, func, zap_type_params)
 
 static MunitResult
+test_norm_legacy_match_case(const MunitParameter params[], void *arg)
+{
+	(void) arg;
+	struct {
+		const char *stored;
+		const char *query;
+		int form;
+	} pairs[] = {
+		{ "o\xef\xac\x83" "ce", "office", U8_TEXTPREP_NFKD },
+		{ "o\xef\xac\x83" "ce", "office", U8_TEXTPREP_NFKC },
+		{ "\xc7\xb0", "j\xcc\x8c", U8_TEXTPREP_NFD },
+		{ "\xc7\xb0", "j\xcc\x8c", U8_TEXTPREP_NFC },
+	};
+	for (int i = 0; i < ARRAY_SIZE(pairs); i++) {
+		for (int reverse = 0; reverse < 2; reverse++) {
+			const char *stored = reverse ?
+			    pairs[i].query : pairs[i].stored;
+			const char *query = reverse ?
+			    pairs[i].stored : pairs[i].query;
+			dnode_t *dn = mock_zap_create_norm_params(params,
+			    "type", pairs[i].form | U8_TEXTPREP_TOUPPER);
+			dmu_tx_t *tx = (dmu_tx_t *)mock_tx_create();
+			uint64_t value = 42;
+			uint64_t result = 0;
+			unit_ok(zap_add_by_dnode(dn, stored, 8, 1, &value, tx));
+			if (i < 2) {
+				unit_err(zap_lookup_norm_by_dnode(dn, query,
+				    8, 1, &result, MT_NORMALIZE, NULL, 0, NULL),
+				    ENOENT);
+			}
+			unit_ok(zap_lookup_norm_by_dnode(dn, query, 8, 1,
+			    &result, MT_NORMALIZE | MT_MATCH_CASE,
+			    NULL, 0, NULL));
+			unit_eq(result, value);
+			mock_tx_destroy((mock_dmu_tx_t *)tx);
+			mock_zap_destroy(dn);
+		}
+	}
+	return (MUNIT_OK);
+}
+
+static MunitResult
 test_norm_compare_bounds(const MunitParameter params[], void *arg)
 {
 	(void) params;
@@ -1731,6 +1773,8 @@ static const MunitTest zap_tests[] = {
 
 	UNIT_TEST("norm_compare",		test_norm_compare),
 	UNIT_TEST("norm_compare_bounds",	test_norm_compare_bounds),
+	UNIT_TEST("norm_legacy_match_case", test_norm_legacy_match_case,
+	    zap_type_params),
 	UNIT_TEST("norm_toupper",	test_norm_toupper, zap_type_params),
 	UNIT_TEST("norm_match_case",	test_norm_match_case, zap_type_params),
 	UNIT_TEST("norm_nfc",		test_norm_nfc, zap_type_params),
