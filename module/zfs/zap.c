@@ -229,6 +229,12 @@ zap_lookup_norm_by_dnode(dnode_t *dn, const char *name,
 		return (SET_ERROR(ENOTSUP));
 	}
 
+	if (zap->zap_ismicro && zap_normcase(zn)) {
+		err = zap_norm_index_prepare(zap);
+		if (err != 0)
+			goto out;
+	}
+
 	if (!zap->zap_ismicro) {
 		err = fzap_lookup(zn, integer_size, num_integers, buf,
 		    realname, rn_len, ncp, NULL);
@@ -256,6 +262,7 @@ zap_lookup_norm_by_dnode(dnode_t *dn, const char *name,
 			}
 		}
 	}
+out:
 	zap_name_free(zn);
 	zap_unlock(zap, FTAG);
 	return (err);
@@ -749,6 +756,12 @@ zap_remove_norm_by_dnode(dnode_t *dn, const char *name, matchtype_t mt,
 		zap_unlock(zap, FTAG);
 		return (SET_ERROR(ENOTSUP));
 	}
+	if (zap->zap_ismicro && zap_normcase(zn)) {
+		err = zap_norm_index_prepare(zap);
+		if (err != 0)
+			goto out;
+	}
+
 	if (!zap->zap_ismicro) {
 		err = fzap_remove(zn, tx);
 	} else {
@@ -758,10 +771,12 @@ zap_remove_norm_by_dnode(dnode_t *dn, const char *name, matchtype_t mt,
 			err = SET_ERROR(ENOENT);
 		} else {
 			zap->zap_m.zap_num_entries--;
+			zap_norm_index_update(zn, B_FALSE);
 			memset(MZE_PHYS(zap, mze), 0, sizeof (mzap_ent_phys_t));
 			zfs_btree_remove_idx(&zap->zap_m.zap_tree, &idx);
 		}
 	}
+out:
 	zap_name_free(zn);
 	zap_unlock(zap, FTAG);
 	return (err);

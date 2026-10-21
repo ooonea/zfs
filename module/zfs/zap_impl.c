@@ -31,6 +31,18 @@ static kmem_cache_t *zap_attr_cache;
 static kmem_cache_t *zap_name_long_cache;
 static kmem_cache_t *zap_attr_long_cache;
 
+typedef struct zap_norm_entry {
+	uint64_t canonical;
+	uint64_t legacy;
+	uint64_t references;
+} zap_norm_entry_t;
+
+struct zap_norm_index {
+	kmutex_t lock;
+	zfs_btree_t entries;
+	boolean_t incomplete;
+};
+
 /* Setup/teardown caches. Part of the public interface in zap.h. */
 void
 zap_init(void)
@@ -275,6 +287,177 @@ zap_hash(zap_name_t *zn)
 	return (h);
 }
 
+int
+zap_match_hash(zap_name_t *zn, uint64_t *hash)
+{
+	zap_t *zap = zn->zn_zap;
+	zap_name_t *normalized = zap_name_alloc(zap,
+	    zn->zn_normbuf_len > ZAP_MAXNAMELEN);
+	char *name = kmem_alloc(zn->zn_normbuf_len, KM_SLEEP);
+	int error = zap_normalize(zap, zn->zn_key_orig, name,
+	    zap->zap_normflags & ~U8_TEXTPREP_TOUPPER, zn->zn_normbuf_len);
+	if (error == 0)
+		error = zap_name_init_str(normalized, name, 0);
+	if (error == 0)
+		*hash = normalized->zn_hash;
+	kmem_free(name, zn->zn_normbuf_len);
+	zap_name_free(normalized);
+	return (error);
+}
+
+static int
+zap_norm_entry_compare(const void *a, const void *b)
+{
+	const zap_norm_entry_t *left = a;
+	const zap_norm_entry_t *right = b;
+	int order = TREE_CMP(left->canonical, right->canonical);
+	return (order != 0 ? order : TREE_CMP(left->legacy, right->legacy));
+}
+
+void
+zap_norm_index_update(zap_name_t *zn, boolean_t add)
+{
+	zap_norm_index_t *index = zn->zn_zap->zap_norm_index;
+	if (index == NULL)
+		return;
+	if (add) {
+		const unsigned char *name = zn->zn_key_orig;
+		while (*name != 0 && *name < 0x80)
+			name++;
+		if (*name == 0)
+			return;
+	}
+	zap_norm_entry_t key = { .legacy = zn->zn_hash };
+	int error = zap_match_hash(zn, &key.canonical);
+	mutex_enter(&index->lock);
+	if (error != 0) {
+		index->incomplete = B_TRUE;
+	} else if (key.canonical != key.legacy) {
+		zfs_btree_index_t where;
+		zap_norm_entry_t *entry =
+		    zfs_btree_find(&index->entries, &key, &where);
+		if (add) {
+			if (entry == NULL) {
+				key.references = 1;
+				zfs_btree_add_idx(&index->entries,
+				    &key, &where);
+			} else {
+				entry->references++;
+			}
+		} else if (entry == NULL) {
+			index->incomplete = B_TRUE;
+		} else if (--entry->references == 0) {
+			zfs_btree_remove_idx(&index->entries, &where);
+		}
+	}
+	mutex_exit(&index->lock);
+}
+
+void
+zap_norm_index_destroy(zap_t *zap)
+{
+	zap_norm_index_t *index = zap->zap_norm_index;
+	if (index == NULL)
+		return;
+	zfs_btree_clear(&index->entries);
+	zfs_btree_destroy(&index->entries);
+	mutex_destroy(&index->lock);
+	kmem_free(index, sizeof (*index));
+	zap->zap_norm_index = NULL;
+}
+
+int
+zap_norm_hash_next(zap_t *zap, uint64_t canonical, uint64_t *legacy,
+    boolean_t first)
+{
+	zap_norm_index_t *index = zap->zap_norm_index;
+	if (index == NULL)
+		return (SET_ERROR(ENOTSUP));
+	zap_norm_entry_t key = {
+		.canonical = canonical,
+		.legacy = first ? 0 : *legacy,
+	};
+	mutex_enter(&index->lock);
+	if (index->incomplete) {
+		mutex_exit(&index->lock);
+		return (SET_ERROR(ENOTSUP));
+	}
+	zfs_btree_index_t where;
+	zap_norm_entry_t *entry =
+	    zfs_btree_find(&index->entries, &key, &where);
+	if (entry == NULL || !first)
+		entry = zfs_btree_next(&index->entries, &where, &where);
+	int error = 0;
+	if (entry == NULL || entry->canonical != canonical)
+		error = SET_ERROR(ENOENT);
+	else
+		*legacy = entry->legacy;
+	mutex_exit(&index->lock);
+	return (error);
+}
+
+boolean_t
+zap_norm_index_empty(zap_t *zap)
+{
+	zap_norm_index_t *index = zap->zap_norm_index;
+	if (index == NULL)
+		return (B_FALSE);
+	mutex_enter(&index->lock);
+	boolean_t empty = !index->incomplete &&
+	    zfs_btree_numnodes(&index->entries) == 0;
+	mutex_exit(&index->lock);
+	return (empty);
+}
+
+int
+zap_norm_index_prepare(zap_t *zap)
+{
+	if (zap->zap_norm_index != NULL ||
+	    !(zap->zap_normflags & U8_TEXTPREP_TOUPPER) ||
+	    !(zap->zap_normflags & (U8_CANON_DECOMP | U8_COMPAT_DECOMP)))
+		return (0);
+	boolean_t reader = !RW_WRITE_HELD(&zap->zap_rwlock);
+	if (reader && !rw_tryupgrade(&zap->zap_rwlock)) {
+		rw_exit(&zap->zap_rwlock);
+		rw_enter(&zap->zap_rwlock, RW_WRITER);
+	}
+	int error = 0;
+	if (zap->zap_norm_index == NULL) {
+		zap_norm_index_t *index =
+		    kmem_zalloc(sizeof (*index), KM_SLEEP);
+		mutex_init(&index->lock, NULL, MUTEX_DEFAULT, NULL);
+		zfs_btree_create_custom(&index->entries, zap_norm_entry_compare,
+		    NULL, sizeof (zap_norm_entry_t), 512);
+		zap->zap_norm_index = index;
+		if (zap->zap_ismicro) {
+			zfs_btree_index_t where;
+			mzap_ent_t *entry;
+			for (entry = zfs_btree_first(&zap->zap_m.zap_tree,
+			    &where);
+			    entry != NULL;
+			    entry = zfs_btree_next(&zap->zap_m.zap_tree,
+			    &where, &where)) {
+				zap_name_t *zn = zap_name_alloc_str(zap,
+				    MZE_PHYS(zap, entry)->mze_name, 0);
+				if (zn == NULL) {
+					error = SET_ERROR(EIO);
+					break;
+				}
+				zn->zn_hash = (uint64_t)entry->mze_hash << 32;
+				zap_norm_index_update(zn, B_TRUE);
+				zap_name_free(zn);
+			}
+		} else {
+			error = fzap_norm_index_build(zap);
+		}
+		if (error != 0)
+			zap_norm_index_destroy(zap);
+	}
+	if (reader)
+		rw_downgrade(&zap->zap_rwlock);
+	return (error);
+}
+
 static int
 zap_lock_impl(dnode_t *dn, dmu_buf_t *db, dmu_tx_t *tx,
     krw_t lti, boolean_t fatreader, boolean_t adding, zap_t **zapp)
@@ -458,6 +641,7 @@ void
 zap_evict_sync(void *dbu)
 {
 	zap_t *zap = dbu;
+	zap_norm_index_destroy(zap);
 
 	rw_destroy(&zap->zap_rwlock);
 
