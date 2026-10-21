@@ -712,7 +712,6 @@ def lzc_receive(snapname, fd, force=False, raw=False, origin=None, props=None):
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
     :raises BadStream: if a clone stream is received into an existing
-        filesystem without a matching origin snapshot owned by that
         filesystem.
     :raises StreamFeatureNotSupported: if the stream has a feature that is not
         supported on this side.
@@ -1003,7 +1002,6 @@ def lzc_receive_resumable(
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
     :raises BadStream: if a clone stream is received into an existing
-        filesystem without a matching origin snapshot owned by that
         filesystem.
     :raises StreamFeatureNotSupported: if the stream has a feature that is not
         supported on this side.
@@ -1091,7 +1089,6 @@ def lzc_receive_with_header(
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
     :raises BadStream: if a clone stream is received into an existing
-        filesystem without a matching origin snapshot owned by that
         filesystem.
     :raises StreamFeatureNotSupported: if the stream has a feature that is not
         supported on this side.
@@ -1233,7 +1230,6 @@ def lzc_receive_one(
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
     :raises BadStream: if a clone stream is received into an existing
-        filesystem without a matching origin snapshot owned by that
         filesystem.
     :raises StreamFeatureNotSupported: if the stream has a feature that is not
         supported on this side.
@@ -1346,7 +1342,6 @@ def lzc_receive_with_cmdprops(
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
     :raises BadStream: if a clone stream is received into an existing
-        filesystem without a matching origin snapshot owned by that
         filesystem.
     :raises StreamFeatureNotSupported: if the stream has a feature that is not
         supported on this side.
@@ -1473,7 +1468,6 @@ def lzc_receive_with_heal(
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
     :raises BadStream: if a clone stream is received into an existing
-        filesystem without a matching origin snapshot owned by that
         filesystem.
     :raises StreamFeatureNotSupported: if corrective is set to true indicates
         stream is not compatible with the data in the pool.

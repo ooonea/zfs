@@ -167,6 +167,7 @@ static int flush_write_batch(struct receive_writer_arg *rwa);
 
 typedef struct dmu_recv_begin_arg {
 	const char *drba_origin;
+	boolean_t drba_local_origin;
 	dmu_recv_cookie_t *drba_cookie;
 	cred_t *drba_cred;
 	dsl_crypto_params_t *drba_dcp;
@@ -724,7 +725,8 @@ dmu_recv_begin_check(void *arg, dmu_tx_t *tx)
 		if (flags & DRR_FLAG_CLONE || drba->drba_origin) {
 			dsl_dataset_t *origin;
 
-			if (!(flags & DRR_FLAG_CLONE) ||
+			if (!drba->drba_local_origin ||
+			    !(flags & DRR_FLAG_CLONE) ||
 			    drba->drba_origin == NULL || fromguid == 0) {
 				dsl_dataset_rele_flags(ds, dsflags, FTAG);
 				return (SET_ERROR(EINVAL));
@@ -1353,13 +1355,14 @@ dmu_recv_begin(const char *tofs, const char *tosnap,
     dmu_replay_record_t *drr_begin, boolean_t force, boolean_t heal,
     boolean_t resumable, nvlist_t *localprops, nvlist_t *hidden_args,
     const char *origin, dmu_recv_cookie_t *drc, zfs_file_t *fp,
-    offset_t *voffp)
+    offset_t *voffp, boolean_t local_origin)
 {
 	dmu_recv_begin_arg_t drba = { 0 };
 	int err = 0;
 
 	cred_t *cr = CRED();
 	crhold(cr);
+	drba.drba_local_origin = local_origin;
 
 	memset(drc, 0, sizeof (dmu_recv_cookie_t));
 	drc->drc_drr_begin = drr_begin;

@@ -5298,6 +5298,12 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 		    oxprops, wkeydata, wkeylen, origin, flags->force,
 		    flags->heal, flags->resumable, raw, infd, drr_noswap, -1,
 		    &read_bytes, &errflags, NULL, &prop_errors);
+	} else if (clone_incremental) {
+		err = ioctl_err = lzc_receive_with_local_origin(destsnap,
+		    rcvprops,
+		    oxprops, wkeydata, wkeylen, origin, flags->force,
+		    flags->resumable, raw, infd, drr_noswap, -1, &read_bytes,
+		    &errflags, NULL, &prop_errors);
 	} else {
 		err = ioctl_err = lzc_receive_with_cmdprops(destsnap, rcvprops,
 		    oxprops, wkeydata, wkeylen, origin, flags->force,
