@@ -1717,6 +1717,51 @@ test_norm_match_case_conflict(const MunitParameter params[], void *arg)
 }
 
 static MunitResult
+test_norm_match_case_tree(const MunitParameter params[], void *arg)
+{
+	(void) params;
+	(void) arg;
+	dnode_t *dn = mock_zap_create_norm_fatzap(
+	    U8_TEXTPREP_NFKD | U8_TEXTPREP_TOUPPER);
+	dmu_tx_t *tx = (dmu_tx_t *)mock_tx_create();
+	char name[32];
+	for (int i = 0; i < 40; i++) {
+		for (int upper = 0; upper < 2; upper++) {
+			(void) snprintf(name, sizeof (name), "%02d-%s", i,
+			    upper ? "O\xef\xac\x83" "CE" :
+			    "o\xef\xac\x83" "ce");
+			uint64_t value = i * 2 + upper;
+			unit_ok(zap_add_by_dnode(dn, name, 8, 1, &value, tx));
+		}
+	}
+	matchtype_t match = MT_NORMALIZE | MT_MATCH_CASE;
+	for (int upper = 0; upper < 2; upper++) {
+		for (int i = 39; i >= 0; i--) {
+			uint64_t result;
+			(void) snprintf(name, sizeof (name), "%02d-%s", i,
+			    upper ? "OffiCE" : "office");
+			unit_ok(zap_lookup_norm_by_dnode(dn, name,
+			    8, 1, &result, match, NULL, 0, NULL));
+			unit_eq(result, i * 2 + upper);
+			unit_ok(zap_remove_norm_by_dnode(dn, name, match, tx));
+			unit_err(zap_lookup_norm_by_dnode(dn, name,
+			    8, 1, &result, match, NULL, 0, NULL), ENOENT);
+		}
+	}
+	uint64_t count;
+	unit_ok(zap_count_by_dnode(dn, &count));
+	unit_zero(count);
+	zap_t *zap;
+	unit_ok(zap_lock_by_dnode(dn, NULL, RW_READER,
+	    B_TRUE, B_FALSE, FTAG, &zap));
+	unit_true(zap_norm_index_empty(zap));
+	zap_unlock(zap, FTAG);
+	mock_tx_destroy((mock_dmu_tx_t *)tx);
+	mock_zap_destroy(dn);
+	return (MUNIT_OK);
+}
+
+static MunitResult
 test_norm_compare_bounds(const MunitParameter params[], void *arg)
 {
 	(void) params;
@@ -1863,6 +1908,7 @@ static const MunitTest zap_tests[] = {
 	    zap_type_params),
 	UNIT_TEST("norm_match_case_conflict", test_norm_match_case_conflict,
 	    zap_type_params),
+	UNIT_TEST("norm_match_case_tree", test_norm_match_case_tree),
 	UNIT_TEST("norm_toupper",	test_norm_toupper, zap_type_params),
 	UNIT_TEST("norm_match_case",	test_norm_match_case, zap_type_params),
 	UNIT_TEST("norm_nfc",		test_norm_nfc, zap_type_params),
