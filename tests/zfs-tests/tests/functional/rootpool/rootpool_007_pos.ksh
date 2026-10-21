@@ -32,6 +32,8 @@
 
 . $STF_SUITE/include/libtest.shlib
 
+unset __ZFS_POOL_EXCLUDE
+
 #
 # DESCRIPTION:
 #
