@@ -724,7 +724,8 @@ dmu_recv_begin_check(void *arg, dmu_tx_t *tx)
 		if (flags & DRR_FLAG_CLONE || drba->drba_origin) {
 			dsl_dataset_t *origin;
 
-			if (drba->drba_origin == NULL || fromguid == 0) {
+			if (!(flags & DRR_FLAG_CLONE) ||
+			    drba->drba_origin == NULL || fromguid == 0) {
 				dsl_dataset_rele_flags(ds, dsflags, FTAG);
 				return (SET_ERROR(EINVAL));
 			}
