@@ -293,14 +293,22 @@ zap_match_hash(zap_name_t *zn, uint64_t *hash)
 	zap_t *zap = zn->zn_zap;
 	zap_name_t *normalized = zap_name_alloc(zap,
 	    zn->zn_normbuf_len > ZAP_MAXNAMELEN);
-	char *name = kmem_alloc(zn->zn_normbuf_len, KM_SLEEP);
-	int error = zap_normalize(zap, zn->zn_key_orig, name,
-	    zap->zap_normflags & ~U8_TEXTPREP_TOUPPER, zn->zn_normbuf_len);
+	char *name = NULL;
+	const char *key = zn->zn_key_norm;
+	int error = 0;
+	if (!(zn->zn_matchtype & MT_MATCH_CASE)) {
+		name = kmem_alloc(zn->zn_normbuf_len, KM_SLEEP);
+		key = name;
+		error = zap_normalize(zap, zn->zn_key_orig, name,
+		    zap->zap_normflags & ~U8_TEXTPREP_TOUPPER,
+		    zn->zn_normbuf_len);
+	}
 	if (error == 0)
-		error = zap_name_init_str(normalized, name, 0);
+		error = zap_name_init_str(normalized, key, 0);
 	if (error == 0)
 		*hash = normalized->zn_hash;
-	kmem_free(name, zn->zn_normbuf_len);
+	if (name != NULL)
+		kmem_free(name, zn->zn_normbuf_len);
 	zap_name_free(normalized);
 	return (error);
 }
