@@ -37,9 +37,6 @@ verify_runnable "both"
 
 function cleanup
 {
-	if is_global_zone ; then
-		log_must zfs set refreservation=none $TESTPOOL
-	fi
 	log_must zfs destroy -rf $TESTPOOL/$TESTFS
 	log_must zfs create $TESTPOOL/$TESTFS
 	log_must zfs set mountpoint=$TESTDIR $TESTPOOL/$TESTFS
@@ -48,12 +45,14 @@ function cleanup
 log_assert "Verify refreservation is limited by available space."
 log_onexit cleanup
 
-pool=$TESTPOOL ; fs=$pool/$TESTFS ; subfs=$fs/subfs
+pool=$TESTPOOL ; fs=$pool/$TESTFS/$TESTFS1 ; subfs=$fs/subfs
+log_must zfs create $fs
 log_must zfs create $subfs
 
 typeset datasets
 if is_global_zone; then
-        datasets="$pool $fs"
+        # The pool root also accounts for changing MOS allocations.
+        datasets="$pool/$TESTFS $fs"
 else
         datasets="$fs"
 fi
