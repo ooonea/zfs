@@ -2124,9 +2124,11 @@ get_numeric_property(zfs_handle_t *zhp, zfs_prop_t prop, zprop_source_t *src,
 #ifdef __linux__
 		/* Linux omits the positive forms of these mount flags. */
 		if (zhp->zfs_mntopts != NULL &&
-		    (prop == ZFS_PROP_ATIME || prop == ZFS_PROP_EXEC ||
-		    prop == ZFS_PROP_SETUID || prop == ZFS_PROP_DEVICES))
+		    (prop == ZFS_PROP_EXEC || prop == ZFS_PROP_SETUID ||
+		    prop == ZFS_PROP_DEVICES))
 			mounted_on = hasmntopt(&mnt, mntopt_off) == NULL;
+		if (prop == ZFS_PROP_ATIME && hasmntopt(&mnt, mntopt_off))
+			mounted_on = B_FALSE;
 #endif
 		if (mounted_on && !*val) {
 			*val = B_TRUE;
