@@ -562,12 +562,9 @@ function mess_send_file
 	log_must [ "$nr_begins" -eq 1 ]
 
 	if (($RANDOM % 7 <= 1)); then
-		#
-		# We corrupt 2 bytes to minimize the chance that we
-		# write the same value that's already there.
-		#
-		log_must eval "dd if=/dev/urandom of=$file conv=notrunc " \
-		    "bs=1 count=2 seek=$offset >/dev/null 2>&1"
+		typeset byte=$(od -An -tu1 -j $offset -N1 $file)
+		log_must eval "printf '\\$(printf '%03o' $((byte ^ 1)))' | " \
+		    "dd of=$file conv=notrunc bs=1 count=1 seek=$offset >/dev/null 2>&1"
 	else
 		log_must truncate -s $offset $file
 	fi
