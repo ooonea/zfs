@@ -323,6 +323,11 @@ case "$1" in
     CMDLINE="$CMDLINE biosdevname=0 net.ifnames=0"
     echo 'GRUB_SERIAL_COMMAND="serial --speed=115200"' \
       | sudo tee -a /etc/default/grub >/dev/null
+    sudo sed -i -e '/^GRUB_TERMINAL_INPUT/d' \
+      -e '/^GRUB_TERMINAL_OUTPUT/d' /etc/default/grub
+    printf '%s\n' 'GRUB_TERMINAL_INPUT="serial console"' \
+      'GRUB_TERMINAL_OUTPUT="serial console"' \
+      | sudo tee -a /etc/default/grub >/dev/null
     ;;
   ubuntu24|ubuntu26)
     GRUB_CFG="/boot/grub/grub.cfg"
