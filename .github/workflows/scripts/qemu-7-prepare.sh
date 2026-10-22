@@ -14,20 +14,28 @@ source env.txt
 if sudo test -f /var/log/libvirt/qemu/openzfs-serial.log; then
   sudo cat /var/log/libvirt/qemu/openzfs-serial.log > /var/tmp/vm0-console.txt
 fi
-for command in domstate dumpxml domblkerror; do
-  if ! sudo virsh "$command" openzfs > "/var/tmp/vm0-$command.txt" 2>&1; then
-    echo "Capture failed: $command" >> "/var/tmp/vm0-$command.txt"
+for domain in openzfs vm1 vm2; do
+  for command in domstate dumpxml domblkerror; do
+    if ! sudo virsh "$command" "$domain" > "/var/tmp/$domain-$command.txt" 2>&1; then
+      echo "Capture failed: $command" >> "/var/tmp/$domain-$command.txt"
+    fi
+  done
+  if sudo test -f "/var/log/libvirt/qemu/$domain.log"; then
+    sudo cat "/var/log/libvirt/qemu/$domain.log" > "/var/tmp/$domain-qemu.txt"
+  fi
+  for info in status chardev registers; do
+    if ! sudo virsh qemu-monitor-command --hmp "$domain" "info $info" \
+        > "/var/tmp/$domain-$info.txt" 2>&1; then
+      echo "Capture failed: info $info" >> "/var/tmp/$domain-$info.txt"
+    fi
+  done
+  if sudo virsh screenshot "$domain" "/var/tmp/$domain-screen" \
+      > "/var/tmp/$domain-screenshot.txt" 2>&1; then
+    base64 "/var/tmp/$domain-screen" > "/var/tmp/$domain-screen-base64.txt"
   fi
 done
-for info in status chardev registers; do
-  if ! sudo virsh qemu-monitor-command --hmp openzfs "info $info" \
-      > "/var/tmp/vm0-$info.txt" 2>&1; then
-    echo "Capture failed: info $info" >> "/var/tmp/vm0-$info.txt"
-  fi
-done
-if sudo virsh screenshot openzfs /var/tmp/vm0-screen \
-    > /var/tmp/vm0-screenshot.txt 2>&1; then
-  base64 /var/tmp/vm0-screen > /var/tmp/vm0-screen-base64.txt
+if ! sudo journalctl -k --no-pager > /var/tmp/host-kernel.txt 2>&1; then
+  echo "Capture failed: kernel journal" >> /var/tmp/host-kernel.txt
 fi
 
 mkdir -p $RESPATH
