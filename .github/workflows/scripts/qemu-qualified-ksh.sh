@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Qualification-only fixture for the two prepared ksh contributions.
+# Qualification-only fixture for the prepared ksh contributions.
 source_revision=01ab4bc46ed7698effa81f73a597d754e948e689
-qualified_tree=df8d2050d317d44d7a1e3ac95cabc166fc2e591c
+qualified_tree=7917a1cb46843634823be1e61552f8f6f265b9c9
 patch_path=$(cd -- "$(dirname -- "$0")" && pwd)/qualified-ksh.patch
 source_directory=$(mktemp -d /var/tmp/ksh-qualified.XXXXXXXX)
 git -C "$source_directory" init
 git -C "$source_directory" fetch --depth 1 https://github.com/ksh93/ksh.git "$source_revision"
 git -C "$source_directory" checkout --detach FETCH_HEAD
 test "$(git -C "$source_directory" rev-parse HEAD)" = "$source_revision"
-git -C "$source_directory" apply --index "$patch_path"
+git -C "$source_directory" apply --index --unidiff-zero "$patch_path"
 test "$(git -C "$source_directory" write-tree)" = "$qualified_tree"
 cd "$source_directory"
 ./bin/package make
