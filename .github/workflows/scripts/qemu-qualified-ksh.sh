@@ -14,8 +14,10 @@ git -C "$source_directory" apply --index "$patch_path"
 test "$(git -C "$source_directory" write-tree)" = "$qualified_tree"
 cd "$source_directory"
 ./bin/package make
-./bin/package test > /var/tmp/qualified-ksh-tests.txt 2>&1
+test_status=0
+./bin/package test > /var/tmp/qualified-ksh-tests.txt 2>&1 || test_status=$?
 cat /var/tmp/qualified-ksh-tests.txt
+test "$test_status" -eq 0 || exit "$test_status"
 grep -qx 'Total errors: 0' /var/tmp/qualified-ksh-tests.txt
 # package host identifies the build directory on Linux and FreeBSD.
 host_type=$(./bin/package host type)
