@@ -14,6 +14,21 @@ source env.txt
 if sudo test -f /var/log/libvirt/qemu/openzfs-serial.log; then
   sudo cat /var/log/libvirt/qemu/openzfs-serial.log > /var/tmp/vm0-console.txt
 fi
+for command in domstate dumpxml domblkerror; do
+  if ! sudo virsh "$command" openzfs > "/var/tmp/vm0-$command.txt" 2>&1; then
+    echo "Capture failed: $command" >> "/var/tmp/vm0-$command.txt"
+  fi
+done
+for info in status chardev registers; do
+  if ! sudo virsh qemu-monitor-command --hmp openzfs "info $info" \
+      > "/var/tmp/vm0-$info.txt" 2>&1; then
+    echo "Capture failed: info $info" >> "/var/tmp/vm0-$info.txt"
+  fi
+done
+if sudo virsh screenshot openzfs /var/tmp/vm0-screen \
+    > /var/tmp/vm0-screenshot.txt 2>&1; then
+  base64 /var/tmp/vm0-screen > /var/tmp/vm0-screen-base64.txt
+fi
 
 mkdir -p $RESPATH
 
