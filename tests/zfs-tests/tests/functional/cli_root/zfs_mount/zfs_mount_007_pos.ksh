@@ -54,6 +54,7 @@
 
 function cleanup
 {
+	destroy_dataset "$tempfs" "-rf"
 	if ! ismounted $TESTPOOL/$TESTFS; then
 		log_must zfs mount $TESTPOOL/$TESTFS
 	fi
@@ -124,7 +125,20 @@ function get_reverse_option
 }
 
 fs=$TESTPOOL/$TESTFS
+tempfs=$fs/override
 cleanup
+
+set -A override_props atime exec
+is_freebsd && override_props+=("setuid")
+for property in ${override_props[@]}; do
+	option=$property
+	[[ $property == setuid ]] && option=suid
+	log_must zfs create -o $property=off $tempfs
+	log_must zfs unmount $tempfs
+	log_must zfs mount -o $option $tempfs
+	log_must test "$(get_prop $property $tempfs)" = on
+	log_must zfs destroy $tempfs
+done
 
 for property in ${properties[@]}; do
 	orig_val=$(get_prop $property $fs)

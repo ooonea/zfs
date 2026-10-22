@@ -110,8 +110,8 @@ while ((i < ${#args[@]})); do
 		
 		msg=$(mount | grep "$tmpmnt ")
 
-		if ! echo $msg | grep -q "${args[((i))]}"; then
-			if echo $msg | grep -q "${args[((i-1))]}"; then
+		if ! echo $msg | grep -qw "${args[((i))]}"; then
+			if echo $msg | grep -qw "${args[((i^1))]}"; then
 				log_fail "Expected option: ${args[((i))]} \n" \
 					 "Real option: $msg"
 			fi
