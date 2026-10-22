@@ -93,6 +93,7 @@ EOF
     --memory $((1024*RAM)) \
     --memballoon model=virtio \
     --graphics none \
+    --video vga \
     --cloud-init user-data=/tmp/user-data \
     --network bridge=virbr0,model=$NIC,mac="52:54:00:83:79:0$i" \
     --disk $DISK-system,bus=virtio,cache=none,format=$FORMAT,driver.discard=unmap \
