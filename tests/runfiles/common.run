@@ -177,7 +177,8 @@ tests = ['zdb_002_pos', 'zdb_003_pos', 'zdb_004_pos', 'zdb_005_pos',
     'zdb_file_layout_001', 'zdb_file_layout_002', 'zdb_file_layout_003',
     'zdb_file_layout_neg', 'zdb_label_checksum', 'zdb_object_range_neg',
     'zdb_object_range_pos', 'zdb_objset_id', 'zdb_decompress_zstd',
-    'zdb_recover', 'zdb_recover_2', 'zdb_backup', 'zdb_tunables',
+    'zdb_recover', 'zdb_recover_2', 'zdb_simulated_ddt_errors', 'zdb_backup',
+    'zdb_tunables',
     'zdb_il_saxattr']
 pre =
 post =
@@ -302,9 +303,11 @@ tests = ['zfs_receive_001_pos', 'zfs_receive_002_pos', 'zfs_receive_003_pos',
     'receive-o-x_props_aliases',
     'zfs_receive_from_encrypted', 'zfs_receive_to_encrypted',
     'zfs_receive_raw', 'zfs_receive_raw_incremental', 'zfs_receive_-e',
-    'zfs_receive_raw_-d', 'zfs_receive_from_zstd', 'zfs_receive_new_props',
+    'zfs_receive_raw_-d', 'zfs_receive_raw_-b', 'zfs_receive_from_zstd',
+    'zfs_receive_new_props',
     'zfs_receive-x_props_alternation',
     'zfs_receive_-wR-encrypted-mix', 'zfs_receive_corrective',
+    'zfs_receive_promote_outside',
     'zfs_receive_compressed_corrective', 'zfs_receive_large_block_corrective']
 tags = ['functional', 'cli_root', 'zfs_receive']
 
@@ -734,7 +737,8 @@ tags = ['functional', 'deadman']
 tests = ['dedup_bclone', 'dedup_bclone_pruned', 'dedup_fdt_create',
     'dedup_fdt_import',
     'dedup_fdt_pacing', 'dedup_legacy_create', 'dedup_legacy_import',
-    'dedup_legacy_fdt_upgrade', 'dedup_legacy_fdt_mixed', 'dedup_quota',
+    'dedup_legacy_fdt_upgrade', 'dedup_legacy_fdt_mixed',
+    'dedup_legacy_repair', 'dedup_quota',
     'dedup_log_zdb_leak',
     'dedup_prune', 'dedup_prune_leak', 'dedup_prune_percentage',
     'dedup_zap_shrink']
@@ -855,7 +859,7 @@ tags = ['functional', 'migration']
 [tests/functional/mmap]
 tests = ['mmap_mixed', 'mmap_read_001_pos', 'mmap_seek_001_pos',
     'mmap_write_001_pos', 'mmap_ftruncate',
-    'mmap_read_truncate']
+    'mmap_read_truncate', 'mmap_eof_extend']
 tags = ['functional', 'mmap']
 
 [tests/functional/mount]
@@ -1210,7 +1214,7 @@ tests = ['zstream_checksum_001_pos',
     'zstream_drop_records_001_pos',
     'zstream_dump_001_pos', 'zstream_dump_002_pos',
     'zstream_dump_003_pos', 'zstream_dump_004_neg',
-    'zstream_raw_001_pos',
+    'zstream_raw_001_pos', 'zstream_raw_002_pos',
     'zstream_recompress_001_pos', 'zstream_recompress_002_pos',
     'zstream_recompress_003_pos', 'zstream_recompress_004_pos',
     'zstream_recompress_005_pos',
