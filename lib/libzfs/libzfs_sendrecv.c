@@ -4561,7 +4561,7 @@ recv_seed_origin(libzfs_handle_t *hdl, const char *sendfs,
 	    strncmp(origin, destination, dest_len - suffix_len) != 0)
 		return (EINVAL);
 	if (flags->isprefix && create_parents(hdl, destsnap,
-	    dest_len - suffix_len, NULL) != 0)
+	    dest_len - suffix_len) != 0)
 		return (-1);
 	zhp = zfs_open(hdl, origin, ZFS_TYPE_SNAPSHOT);
 	if (zhp == NULL)
