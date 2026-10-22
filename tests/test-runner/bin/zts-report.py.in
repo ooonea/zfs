@@ -154,8 +154,6 @@ else:
 known = {
     'casenorm/mixed_none_lookup_ci': ['FAIL', 7633],
     'casenorm/mixed_formd_lookup_ci': ['FAIL', 7633],
-    'cli_root/zpool_import/import_rewind_device_replaced':
-        ['FAIL', rewind_reason],
     'cli_user/misc/zfs_share_001_neg': ['SKIP', na_reason],
     'cli_user/misc/zfs_unshare_001_neg': ['SKIP', na_reason],
     'pool_checkpoint/checkpoint_discard_busy': ['SKIP', 12053],
@@ -205,6 +203,8 @@ elif sys.platform.startswith('linux'):
 maybe = {
     'append/threadsappend_001_pos': ['FAIL', 6136],
     'chattr/setup': ['SKIP', exec_reason],
+    'cli_root/zpool_import/import_rewind_device_replaced':
+        ['FAIL', rewind_reason],
     'crtime/crtime_001_pos': ['SKIP', statx_reason],
     'cli_root/zdb/zdb_006_pos': ['FAIL', known_reason],
     'cli_root/zfs_copies/zfs_copies_006_pos': ['FAIL', known_reason],
