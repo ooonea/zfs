@@ -31,4 +31,4 @@ sudo ln -sf "$destination" /bin/ksh
 if [ "$(uname -s)" = FreeBSD ]; then
   sudo ln -sf "$destination" /usr/local/bin/ksh
 fi
-"$destination" --version
+/bin/ksh -c 'print -r -- "$KSH_VERSION"'
