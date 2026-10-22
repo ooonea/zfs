@@ -1,0 +1,55 @@
+diff --git a/NEWS b/NEWS
+index c0721d90..cb7a61cf 100644
+--- a/NEWS
++++ b/NEWS
+@@ -4,6 +4,13 @@ Uppercase BUG_* IDs are shell bug IDs as used by the Modernish shell library.
+ 
+ 2026-10-22:
+ 
++- Fixed an unterminated collation sentinel key that could cause an
++  out-of-bounds copy when compiling an equivalence class such as [[=z=]].
++
++- Fixed process substitution failures after fork on systems using POSIX
++  timers. Child processes now create their own timer instead of reusing
++  the parent's timer ID, which is not inherited.
++
+ - The sleep builtin will now reject values beyond UINT_MAX and negative
+   numbers.
+ 
+diff --git a/src/cmd/ksh93/sh/timers.c b/src/cmd/ksh93/sh/timers.c
+index a65a6710..9093c1c5 100644
+--- a/src/cmd/ksh93/sh/timers.c
++++ b/src/cmd/ksh93/sh/timers.c
+@@ -66,8 +66,10 @@ static Sfdouble_t setalarm(Sfdouble_t t)
+ 	 * for root and specially privileged processes. :-/
+ 	 */
+ 	static timer_t timer;
+-	static char created;
++	static pid_t created;
+ 	struct itimerspec tnew = { 0 }, told;
++	if(created != getpid())
++		created = 0;
+ 	if(!t)
+ 	{
+ 		if(created)
+@@ -85,7 +87,7 @@ static Sfdouble_t setalarm(Sfdouble_t t)
+ 		if(timer_create(CLOCK_MONOTONIC,&sev,&timer) < 0)
+ 			if(timer_create(CLOCK_REALTIME,&sev,&timer) < 0)
+ 				goto error_out;
+-		created = 1;
++		created = getpid();
+ 	}
+ 	tnew.it_value.tv_sec = t;
+ 	tnew.it_value.tv_nsec = 1.e9 * (t - (Sfdouble_t)tnew.it_value.tv_sec);
+diff --git a/src/lib/libast/regex/regcomp.c b/src/lib/libast/regex/regcomp.c
+index 7a1fa5b4..0bd7e797 100644
+--- a/src/lib/libast/regex/regcomp.c
++++ b/src/lib/libast/regex/regcomp.c
+@@ -1428,6 +1428,7 @@ bra(Cenv_t* env)
+ 				}
+ 				for (i = 0; i < elementsof(cc->key); i++)
+ 					cc->key[i] = (unsigned char)~0;
++				cc->key[COLL_KEY_MAX] = 0;
+ 				dtinsert(dt, cc);
+ 				LCINFO(AST_LC_COLLATE)->data = dt;
+ 			}
