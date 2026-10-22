@@ -40,4 +40,8 @@ libzutil_la_LIBADD += \
 	-lrt
 endif
 
+if BUILD_FREEBSD
+libzutil_la_LIBADD += -lgeom
+endif
+
 libzutil_la_LIBADD += -lm $(LIBBLKID_LIBS) $(LIBUDEV_LIBS)
