@@ -113,8 +113,8 @@ mze_insert(zap_t *zap, uint16_t chunkid, uint64_t hash)
 	zfs_btree_add(&zap->zap_m.zap_tree, &mze);
 }
 
-mzap_ent_t *
-mze_find(zap_name_t *zn, zfs_btree_index_t *idx)
+static mzap_ent_t *
+mze_find_legacy(zap_name_t *zn, zfs_btree_index_t *idx)
 {
 	mzap_ent_t mze_tofind;
 	mzap_ent_t *mze;
@@ -138,6 +138,66 @@ mze_find(zap_name_t *zn, zfs_btree_index_t *idx)
 	}
 
 	return (NULL);
+}
+
+static mzap_ent_t *
+mze_find_normalized(zap_name_t *zn, zfs_btree_index_t *idx)
+{
+	zap_t *zap = zn->zn_zap;
+	zfs_btree_t *tree = &zap->zap_m.zap_tree;
+	uint64_t original = zn->zn_hash;
+	uint64_t canonical;
+	mzap_ent_t *entry;
+
+	if (zap_norm_index_empty(zap)) {
+		const unsigned char *name = zn->zn_key_orig;
+		while (*name != 0 && *name < 0x80)
+			name++;
+		if (*name == 0)
+			return (NULL);
+	}
+	int error = zap_match_hash(zn, &canonical);
+	if (error == 0) {
+		uint64_t candidate = canonical;
+		boolean_t first = B_TRUE;
+		for (;;) {
+			if (candidate != original) {
+				zn->zn_hash = candidate;
+				entry = mze_find_legacy(zn, idx);
+				if (entry != NULL)
+					return (entry);
+			}
+			error = zap_norm_hash_next(zap, canonical,
+			    &candidate, first);
+			first = B_FALSE;
+			if (error != 0)
+				break;
+		}
+		if (error == ENOENT) {
+			zn->zn_hash = original;
+			return (NULL);
+		}
+	}
+	for (entry = zfs_btree_first(tree, idx); entry != NULL;
+	    entry = zfs_btree_next(tree, idx, idx)) {
+		uint64_t hash = (uint64_t)entry->mze_hash << 32;
+		if (hash != original &&
+		    zap_match(zn, MZE_PHYS(zap, entry)->mze_name)) {
+			zn->zn_hash = hash;
+			return (entry);
+		}
+	}
+	zn->zn_hash = original;
+	return (NULL);
+}
+
+mzap_ent_t *
+mze_find(zap_name_t *zn, zfs_btree_index_t *idx)
+{
+	mzap_ent_t *entry = mze_find_legacy(zn, idx);
+	if (entry == NULL && zap_normcase(zn))
+		entry = mze_find_normalized(zn, idx);
+	return (entry);
 }
 
 static uint32_t
@@ -334,6 +394,7 @@ mzap_upgrade(zap_t **zapp, dmu_tx_t *tx, zap_flags_t flags)
 	dprintf("upgrading obj=%llu with %u chunks\n",
 	    (u_longlong_t)zap->zap_object, nchunks);
 	/* XXX destroy the tree later, so we can use the stored hash value */
+	zap_norm_index_destroy(zap);
 	mze_destroy(zap);
 
 	fzap_upgrade(zap, tx, flags);
@@ -414,6 +475,7 @@ mzap_normalization_conflict(zap_t *zap, zap_name_t *zn, mzap_ent_t *mze,
 	if (zap->zap_normflags == 0)
 		return (B_FALSE);
 
+
 	for (other = zfs_btree_prev(&zap->zap_m.zap_tree, idx, &oidx);
 	    other && other->mze_hash == mze->mze_hash;
 	    other = zfs_btree_prev(&zap->zap_m.zap_tree, &oidx, &oidx)) {
@@ -446,9 +508,16 @@ mzap_normalization_conflict(zap_t *zap, zap_name_t *zn, mzap_ent_t *mze,
 		}
 	}
 
+	boolean_t conflict = B_FALSE;
+	if (zn != NULL && zap_normcase(zn) && !zap_norm_index_empty(zap)) {
+		uint64_t original = zn->zn_hash;
+		zn->zn_hash = (uint64_t)mze->mze_hash << 32;
+		conflict = mze_find_normalized(zn, &oidx) != NULL;
+		zn->zn_hash = original;
+	}
 	if (allocdzn)
 		zap_name_free(zn);
-	return (B_FALSE);
+	return (conflict);
 }
 
 void
@@ -484,6 +553,7 @@ again:
 			    zap->zap_m.zap_num_chunks)
 				zap->zap_m.zap_alloc_next = 0;
 			mze_insert(zap, i, zn->zn_hash);
+			zap_norm_index_update(zn, B_TRUE);
 			return;
 		}
 	}

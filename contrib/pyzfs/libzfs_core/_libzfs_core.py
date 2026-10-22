@@ -253,7 +253,7 @@ def lzc_destroy_snaps(snaps, defer):
         rather than immediately failing.
 
     :raises SnapshotDestructionFailure: if one or more snapshots could not be
-        created.
+        destroyed.
 
     .. note::
         :exc:`.SnapshotDestructionFailure` is a compound exception that
@@ -711,8 +711,8 @@ def lzc_receive(snapname, fd, force=False, raw=False, origin=None, props=None):
         destination filesystem.
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
-    :raises BadStream: if a clone stream is received and the destination
-        filesystem already exists.
+    :raises BadStream: if a clone stream is received into an existing
+        filesystem.
     :raises StreamFeatureNotSupported: if the stream has a feature that is not
         supported on this side.
     :raises NameInvalid: if the name of either snapshot is invalid.
@@ -1001,8 +1001,8 @@ def lzc_receive_resumable(
         destination filesystem.
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
-    :raises BadStream: if a clone stream is received and the destination
-        filesystem already exists.
+    :raises BadStream: if a clone stream is received into an existing
+        filesystem.
     :raises StreamFeatureNotSupported: if the stream has a feature that is not
         supported on this side.
     :raises NameInvalid: if the name of either snapshot is invalid.
@@ -1088,8 +1088,8 @@ def lzc_receive_with_header(
         destination filesystem.
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
-    :raises BadStream: if a clone stream is received and the destination
-        filesystem already exists.
+    :raises BadStream: if a clone stream is received into an existing
+        filesystem.
     :raises StreamFeatureNotSupported: if the stream has a feature that is not
         supported on this side.
     :raises NameInvalid: if the name of either snapshot is invalid.
@@ -1229,8 +1229,8 @@ def lzc_receive_one(
         destination filesystem.
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
-    :raises BadStream: if a clone stream is received and the destination
-        filesystem already exists.
+    :raises BadStream: if a clone stream is received into an existing
+        filesystem.
     :raises StreamFeatureNotSupported: if the stream has a feature that is not
         supported on this side.
     :raises ReceivePropertyFailure: if one or more of the specified properties
@@ -1341,8 +1341,8 @@ def lzc_receive_with_cmdprops(
         destination filesystem.
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
-    :raises BadStream: if a clone stream is received and the destination
-        filesystem already exists.
+    :raises BadStream: if a clone stream is received into an existing
+        filesystem.
     :raises StreamFeatureNotSupported: if the stream has a feature that is not
         supported on this side.
     :raises ReceivePropertyFailure: if one or more of the specified properties
@@ -1467,8 +1467,8 @@ def lzc_receive_with_heal(
         corrective recv was not able to reconstruct a corrupted block.
     :raises BadStream: if the stream is corrupt or it is not recognized or it
         is a compound stream or it is a clone stream, but ``origin`` is `None`.
-    :raises BadStream: if a clone stream is received and the destination
-        filesystem already exists.
+    :raises BadStream: if a clone stream is received into an existing
+        filesystem.
     :raises StreamFeatureNotSupported: if corrective is set to true indicates
         stream is not compatible with the data in the pool.
     :raises StreamFeatureNotSupported: if the stream has a feature that is not

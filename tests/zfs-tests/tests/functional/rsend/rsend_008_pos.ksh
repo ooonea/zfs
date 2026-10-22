@@ -34,9 +34,6 @@
 
 verify_runnable "both"
 
-# See issue: https://github.com/openzfs/zfs/issues/6066
-log_unsupported "Occasionally hangs"
-
 #		Origin			Clone
 #
 set -A	dtst	"$POOL"			"$POOL/pclone"		\
@@ -106,7 +103,14 @@ fi
 log_must cmp_ds_subs $POOL $dstds
 typeset -i i=0
 while ((i < ${#pair[@]})); do
-	log_must cmp_ds_cont ${pair[$i]} ${pair[((i+1))]}
+	if [[ $(get_prop type ${pair[$i]}) == volume ]]; then
+		block_device_wait $ZVOL_RDEVDIR/${pair[$i]} \
+		    $ZVOL_RDEVDIR/${pair[((i+1))]}
+		log_must cmp $ZVOL_RDEVDIR/${pair[$i]} \
+		    $ZVOL_RDEVDIR/${pair[((i+1))]}
+	else
+		log_must cmp_ds_cont ${pair[$i]} ${pair[((i+1))]}
+	fi
 	log_must cmp_ds_prop ${pair[$i]} ${pair[((i+1))]}
 
 	((i += 2))

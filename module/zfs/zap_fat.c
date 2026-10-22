@@ -835,6 +835,135 @@ fzap_check(zap_name_t *zn, uint64_t integer_size, uint64_t num_integers)
 /*
  * Routines for manipulating attributes.
  */
+static int fzap_find_normalized(zap_name_t *, dmu_tx_t *, krw_t,
+    zap_leaf_t **, zap_entry_handle_t *);
+
+int
+fzap_norm_index_build(zap_t *zap)
+{
+	zap_cursor_t cursor = { .zc_prefetch = B_TRUE };
+	zap_attribute_t *attribute = zap_attribute_long_alloc();
+	int error;
+
+	while ((error = fzap_cursor_retrieve(zap, &cursor,
+	    attribute)) == 0) {
+		zap_name_t *zn = zap_name_alloc_str(zap, attribute->za_name, 0);
+		if (zn == NULL) {
+			error = SET_ERROR(EIO);
+			break;
+		}
+		zn->zn_hash = cursor.zc_hash;
+		zap_norm_index_update(zn, B_TRUE);
+		zap_name_free(zn);
+		zap_cursor_advance(&cursor);
+	}
+	if (cursor.zc_leaf != NULL) {
+		rw_enter(&cursor.zc_leaf->l_rwlock, RW_READER);
+		zap_put_leaf(cursor.zc_leaf);
+	}
+	zap_attribute_free(attribute);
+	return (error == ENOENT ? 0 : error);
+}
+
+static int
+fzap_normalization_conflict(zap_name_t *zn, boolean_t *conflict)
+{
+	*conflict = B_FALSE;
+	if (zap_norm_index_empty(zn->zn_zap))
+		return (0);
+	uint64_t original = zn->zn_hash;
+	zap_leaf_t *leaf;
+	zap_entry_handle_t entry;
+	int error = fzap_find_normalized(zn, NULL, RW_READER, &leaf, &entry);
+	if (error == 0) {
+		*conflict = B_TRUE;
+		zap_put_leaf(leaf);
+	}
+	zn->zn_hash = original;
+	return (error == ENOENT ? 0 : error);
+}
+
+static int
+fzap_find_normalized_scan(zap_name_t *zn, dmu_tx_t *tx, krw_t lock,
+    zap_leaf_t **leaf, zap_entry_handle_t *entry)
+{
+	zap_t *zap = zn->zn_zap;
+	zap_cursor_t cursor = { .zc_prefetch = B_TRUE };
+	zap_attribute_t *attribute = zap_attribute_long_alloc();
+	int error;
+
+	while ((error = fzap_cursor_retrieve(zap, &cursor,
+	    attribute)) == 0) {
+		if (cursor.zc_hash != zn->zn_hash &&
+		    zap_match(zn, attribute->za_name)) {
+			zn->zn_hash = cursor.zc_hash;
+			break;
+		}
+		zap_cursor_advance(&cursor);
+	}
+	if (cursor.zc_leaf != NULL) {
+		rw_enter(&cursor.zc_leaf->l_rwlock, RW_READER);
+		zap_put_leaf(cursor.zc_leaf);
+	}
+	zap_attribute_free(attribute);
+	if (error != 0)
+		return (error);
+
+	error = zap_deref_leaf(zap, zn->zn_hash, tx, lock, leaf);
+	if (error != 0)
+		return (error);
+	error = zap_leaf_lookup(*leaf, zn, entry);
+	if (error != 0)
+		zap_put_leaf(*leaf);
+	return (error);
+}
+
+static int
+fzap_find_normalized(zap_name_t *zn, dmu_tx_t *tx, krw_t lock,
+    zap_leaf_t **leaf, zap_entry_handle_t *entry)
+{
+	zap_t *zap = zn->zn_zap;
+	int error = zap_norm_index_prepare(zap);
+	if (error != 0)
+		return (error);
+	if (zap_norm_index_empty(zap)) {
+		const unsigned char *name = zn->zn_key_orig;
+		while (*name != 0 && *name < 0x80)
+			name++;
+		if (*name == 0)
+			return (SET_ERROR(ENOENT));
+	}
+	uint64_t original = zn->zn_hash;
+	uint64_t canonical;
+	error = zap_match_hash(zn, &canonical);
+	if (error != 0)
+		return (fzap_find_normalized_scan(zn, tx, lock, leaf, entry));
+	uint64_t candidate = canonical;
+	boolean_t first = B_TRUE;
+	for (;;) {
+		if (candidate != original) {
+			zn->zn_hash = candidate;
+			error = zap_deref_leaf(zap, candidate, tx, lock, leaf);
+			if (error != 0)
+				break;
+			error = zap_leaf_lookup(*leaf, zn, entry);
+			if (error == 0)
+				return (0);
+			zap_put_leaf(*leaf);
+			if (error != ENOENT)
+				break;
+		}
+		error = zap_norm_hash_next(zap, canonical, &candidate, first);
+		first = B_FALSE;
+		if (error != 0)
+			break;
+	}
+	zn->zn_hash = original;
+	if (error == ENOTSUP)
+		return (fzap_find_normalized_scan(zn, tx, lock, leaf, entry));
+	return (error);
+}
+
 int
 fzap_lookup(zap_name_t *zn,
     uint64_t integer_size, uint64_t num_integers, void *buf,
@@ -852,6 +981,12 @@ fzap_lookup(zap_name_t *zn,
 	if (err != 0)
 		return (err);
 	err = zap_leaf_lookup(l, zn, &zeh);
+	if (err == ENOENT && zap_normcase(zn)) {
+		zap_put_leaf(l);
+		err = fzap_find_normalized(zn, NULL, RW_READER, &l, &zeh);
+		if (err != 0)
+			return (err);
+	}
 	if (err == 0) {
 		if ((err = fzap_checksize(integer_size, num_integers)) != 0) {
 			zap_put_leaf(l);
@@ -869,6 +1004,8 @@ fzap_lookup(zap_name_t *zn,
 	}
 
 	zap_put_leaf(l);
+	if (err == 0 && ncp != NULL && !*ncp && zap_normcase(zn))
+		err = fzap_normalization_conflict(zn, ncp);
 	return (err);
 }
 
@@ -902,6 +1039,7 @@ retry:
 
 	if (err == 0) {
 		zap_increment_num_entries(zap, 1, tx);
+		zap_norm_index_update(zn, B_TRUE);
 	} else if (err == EAGAIN) {
 		err = zap_expand_leaf(zn, l, tx, &l);
 		if (err == 0)
@@ -956,8 +1094,10 @@ retry:
 	if (create) {
 		err = zap_entry_create(l, zn, ZAP_NEED_CD,
 		    integer_size, num_integers, val, &zeh);
-		if (err == 0)
+		if (err == 0) {
 			zap_increment_num_entries(zap, 1, tx);
+			zap_norm_index_update(zn, B_TRUE);
+		}
 	} else {
 		err = zap_entry_update(&zeh, integer_size, num_integers, val);
 	}
@@ -1012,9 +1152,16 @@ fzap_remove(zap_name_t *zn, dmu_tx_t *tx)
 	if (err != 0)
 		return (err);
 	err = zap_leaf_lookup(l, zn, &zeh);
+	if (err == ENOENT && zap_normcase(zn)) {
+		zap_put_leaf(l);
+		err = fzap_find_normalized(zn, tx, RW_WRITER, &l, &zeh);
+		if (err != 0)
+			return (err);
+	}
 	if (err == 0) {
 		zap_entry_remove(&zeh);
 		zap_increment_num_entries(zn->zn_zap, -1, tx);
+		zap_norm_index_update(zn, B_FALSE);
 
 		if (zap_leaf_phys(l)->l_hdr.lh_nentries == 0 &&
 		    zap_shrink_enabled)
