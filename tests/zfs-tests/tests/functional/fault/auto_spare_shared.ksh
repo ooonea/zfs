@@ -97,6 +97,7 @@ for spare in $SPARE_FILEDEV $SPARE_DISKDEV; do
 
 	# 6. Clear the fault
 	log_must zinject -c all
+	log_must zpool clear $TESTPOOL1 $FAIL_FILEDEVPOOL2
 	log_must zpool clear $TESTPOOL $FAIL_FILEDEVPOOL1
 
 	# 7. Verify the hot spare is available and check pool/device status
