@@ -44,14 +44,7 @@ function alpine() {
     -e 's#/initramfs-virt#/initramfs-stable#' /boot/limine/limine.conf
   echo "##[endgroup]"
 
-  echo "##[group]Install ksh93 from Source"
-  # Build the actively-maintained "1.0" branch instead of the
-  # default "dev" branch for a reproducible, stable build.
-  git clone --depth 1 --branch 1.0 https://github.com/ksh93/ksh.git /tmp/ksh
-  cd /tmp/ksh
-  ./bin/package make
-  sudo ./bin/package install /
-  echo "##[endgroup]"
+
 }
 
 function archlinux() {
@@ -275,6 +268,8 @@ esac
 # This script is used for checkstyle + zloop deps also.
 # Install only the needed packages and exit - when used this way.
 test -z "${ONLY_DEPS:-}" || exit 0
+
+bash "$HOME/qemu-qualified-ksh.sh"
 
 # Start services
 echo "##[group]Enable services"
