@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 ######################################################################
 # 3) Wait for VM to boot from previous step and launch dependencies
 #    script on it.
@@ -9,6 +11,8 @@
 # FEDORA_VERSION: (optional) Experimental Fedora kernel version, like "6.14" to
 #     install instead of Fedora defaults.
 ######################################################################
+
+set -e
 
 .github/workflows/scripts/qemu-wait-for-vm.sh vm0
 
