@@ -62,7 +62,8 @@ function check_count_freq
 
 	# equality check, for 100% frequency, or if we've never matched the rule
 	if [[ $match -eq 0 || $freq -eq 100 ]] ; then
-		return [[ $match -eq 0 $inject ]]
+		(( match == inject ))
+		return $?
 	fi
 
 	# Compute the expected injection count, and compare. Because we're
@@ -70,7 +71,7 @@ function check_count_freq
 	# the injection account to be within +/- 10% of the expected count.
 	typeset -i expect=$(($match * $freq / 100))
 	typeset -i diff=$((($expect - $inject) / 10))
-	return [[ $diff -ge -1 && $diff -le 1 ]]
+	(( diff >= -1 && diff <= 1 ))
 }
 
 # Test device IO injections by injecting write errors, doing some writes,
