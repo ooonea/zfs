@@ -32,6 +32,8 @@ if [[ $ver =~ ^[0-9]+\.[0-9]+ ]] ; then
 fi
 
 scp .github/workflows/scripts/qemu-3-deps-vm.sh zfs@vm0:qemu-3-deps-vm.sh
+scp .github/workflows/scripts/qemu-qualified-ksh.sh \
+  .github/workflows/scripts/qualified-ksh.patch zfs@vm0:
 PID=`pidof /usr/bin/qemu-system-x86_64`
 ssh zfs@vm0 '$HOME/qemu-3-deps-vm.sh' "$@"
 # wait for poweroff to succeed

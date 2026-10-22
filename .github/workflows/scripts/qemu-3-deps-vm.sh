@@ -31,12 +31,7 @@ function alpine() {
   sudo setup-devd udev
   echo "##[endgroup]"
 
-  echo "##[group]Install ksh93 from Source"
-  git clone --depth 1 https://github.com/ksh93/ksh.git /tmp/ksh
-  cd /tmp/ksh
-  ./bin/package make
-  sudo ./bin/package install /
-  echo "##[endgroup]"
+
 }
 
 function archlinux() {
@@ -260,6 +255,8 @@ esac
 # This script is used for checkstyle + zloop deps also.
 # Install only the needed packages and exit - when used this way.
 test -z "${ONLY_DEPS:-}" || exit 0
+
+bash "$HOME/qemu-qualified-ksh.sh"
 
 # Start services
 echo "##[group]Enable services"
