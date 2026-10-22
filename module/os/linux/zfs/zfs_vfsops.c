@@ -118,6 +118,7 @@ atime_changed_cb(void *arg, uint64_t newval)
 
 	if (sb == NULL)
 		return;
+	zfsvfs->z_vfs->vfs_atime = newval;
 	/*
 	 * Update SB_NOATIME bit in VFS super block.  Since atime update is
 	 * determined by atime_needs_update(), atime_needs_update() needs to
@@ -267,8 +268,10 @@ zfs_register_callbacks(vfs_t *vfsp)
 	objset_t *os = NULL;
 	zfsvfs_t *zfsvfs = NULL;
 	int error = 0;
+	boolean_t atime;
 
 	ASSERT(vfsp);
+	atime = vfsp->vfs_atime;
 	zfsvfs = vfsp->vfs_data;
 	ASSERT(zfsvfs);
 	os = zfsvfs->z_os;
@@ -340,7 +343,7 @@ zfs_register_callbacks(vfs_t *vfsp)
 	if (vfsp->vfs_do_xattr)
 		xattr_changed_cb(zfsvfs, vfsp->vfs_xattr);
 	if (vfsp->vfs_do_atime)
-		atime_changed_cb(zfsvfs, vfsp->vfs_atime);
+		atime_changed_cb(zfsvfs, atime);
 	if (vfsp->vfs_do_relatime)
 		relatime_changed_cb(zfsvfs, vfsp->vfs_relatime);
 	if (vfsp->vfs_do_nbmand)
