@@ -11,6 +11,10 @@ set -eu
 cd /var/tmp
 source env.txt
 
+if sudo test -f /var/log/libvirt/qemu/openzfs-serial.log; then
+  sudo cat /var/log/libvirt/qemu/openzfs-serial.log > /var/tmp/vm0-console.txt
+fi
+
 mkdir -p $RESPATH
 
 TARNAME=qemu-$OS

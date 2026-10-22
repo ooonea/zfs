@@ -1,4 +1,4 @@
-name: zfs-qemu
+name: zfs-qemu-centos9-diagnostic
 
 on:
   push:
@@ -85,6 +85,8 @@ jobs:
               # Normal case
               os_json=$(echo ${os_selection} | jq -c)
           fi
+
+          os_json='["centos-stream9"]'
 
           echo "os=$os_json" | tee -a $GITHUB_OUTPUT
           echo "ci_type=$ci_type" | tee -a $GITHUB_OUTPUT
