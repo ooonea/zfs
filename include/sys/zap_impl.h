@@ -142,6 +142,7 @@ typedef struct zap_phys {
 } zap_phys_t;
 
 typedef struct zap_table_phys zap_table_phys_t;
+typedef struct zap_norm_index zap_norm_index_t;
 
 typedef struct zap {
 	dmu_buf_user_t zap_dbu;
@@ -153,6 +154,7 @@ typedef struct zap {
 	boolean_t zap_ismicro;
 	int zap_normflags;
 	uint64_t zap_salt;
+	zap_norm_index_t *zap_norm_index;
 	union {
 		struct {
 			/*
@@ -197,10 +199,29 @@ typedef struct zap_name {
 	char zn_normbuf[];
 } zap_name_t;
 
+static inline boolean_t
+zap_normcase(zap_name_t *zn)
+{
+	int flags = zn->zn_zap->zap_normflags;
+
+	return ((zn->zn_matchtype & MT_NORMALIZE) &&
+	    (zn->zn_matchtype & MT_MATCH_CASE) &&
+	    (flags & U8_TEXTPREP_TOUPPER) &&
+	    (flags & (U8_CANON_DECOMP | U8_COMPAT_DECOMP)));
+}
+
 #define	zap_f	zap_u.zap_fat
 #define	zap_m	zap_u.zap_micro
 
 boolean_t zap_match(zap_name_t *zn, const char *matchname);
+int zap_match_hash(zap_name_t *zn, uint64_t *hash);
+void zap_norm_index_update(zap_name_t *zn, boolean_t add);
+void zap_norm_index_destroy(zap_t *zap);
+int zap_norm_index_prepare(zap_t *zap);
+boolean_t zap_norm_index_empty(zap_t *zap);
+int zap_norm_hash_next(zap_t *zap, uint64_t canonical, uint64_t *legacy,
+    boolean_t first);
+int fzap_norm_index_build(zap_t *zap);
 int zap_lockdir(objset_t *os, uint64_t obj, dmu_tx_t *tx,
     krw_t lti, boolean_t fatreader, boolean_t adding, const void *tag,
     zap_t **zapp);

@@ -82,7 +82,7 @@ zfs_match_find(zfsvfs_t *zfsvfs, znode_t *dzp, const char *name,
 		 * be one match, but we need to use the normalizing lookup.
 		 */
 		error = zap_lookup_norm(zfsvfs->z_os, dzp->z_id, name, 8, 1,
-		    zoid, mt, buf, bufsz, &conflict);
+		    zoid, mt, buf, bufsz, deflags != NULL ? &conflict : NULL);
 	} else {
 		error = zap_lookup(zfsvfs->z_os, dzp->z_id, name, 8, 1, zoid);
 	}
