@@ -163,9 +163,7 @@ fi
 # Process cmd line args
 OS="$1"
 shift
-NUM="$1"
 shift
-DEN="$1"
 shift
 
 BUILD_LUSTRE=0
@@ -247,14 +245,35 @@ fi
 
 # run functional testings and save exitcode
 cd /var/tmp
-TAGS=$NUM/$DEN
 sudo dmesg -c > dmesg-prerun.txt
 mount > mount.txt
 df -h > df-prerun.txt
 RV=0
 KMEMLEAK=""
 grep -qw kmemleak=on /proc/cmdline && KMEMLEAK="-m"
-$TDIR/zfs-tests.sh -vKO $KMEMLEAK -s 3GB -T $TAGS || RV=$?
+test "$OS" = ubuntu22
+python3 - "$TDIR" <<'PYRUN'
+import configparser
+import sys
+from pathlib import Path
+root = Path(sys.argv[1]) / "runfiles"
+config = configparser.ConfigParser()
+config.read([root / "common.run", root / "linux.run"])
+section = "tests/functional/mmp:Linux"
+selected = configparser.ConfigParser(defaults=dict(config.defaults()))
+selected[section] = dict(config[section])
+selected[section]["tests"] = "['mmp_concurrent_import']"
+with open("/var/tmp/mmp-diagnostic.run", "w") as stream:
+    selected.write(stream)
+PYRUN
+cp /var/tmp/mmp-diagnostic.run /var/tmp/mmp-diagnostic-runfile.txt
+sudo bash "$HOME/zfs/.github/workflows/scripts/qemu-mmp-monitor.sh" &
+monitor=$!
+$TDIR/zfs-tests.sh -vKO $KMEMLEAK -s 3GB \
+    -r /var/tmp/mmp-diagnostic.run -T functional || RV=$?
+touch /var/tmp/mmp-diagnostic.done
+wait "$monitor"
+
 
 df -h > df-postrun.txt
 echo $RV > tests-exitcode.txt
