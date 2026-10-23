@@ -1,0 +1,29 @@
+# Qualification-only selection; generated from common.run and linux.run.
+[DEFAULT]
+pre = setup
+quiet = False
+pre_user = root
+user = root
+timeout = 600
+post_user = root
+post = cleanup
+failsafe_user = root
+failsafe = callbacks/zfs_failsafe
+tags = ['functional']
+
+[tests/functional/pam:Linux]
+tags = ['functional', 'pam']
+tests = ['pam_basic', 'pam_change_unmounted', 'pam_mount_recursively', 'pam_nounmount', 'pam_recursive', 'pam_short_password']
+
+[tests/functional/user_namespace:Linux]
+tags = ['functional', 'user_namespace']
+tests = ['user_namespace_001', 'user_namespace_002', 'user_namespace_003', 'user_namespace_004', 'user_namespace_secpolicy_sys_config', 'user_namespace_secpolicy_zinject']
+
+[tests/functional/idmap_mount:Linux]
+tags = ['functional', 'idmap_mount']
+tests = ['idmap_mount_001', 'idmap_mount_002', 'idmap_mount_003', 'idmap_mount_004', 'idmap_mount_005']
+
+[tests/functional/rsend]
+tags = ['functional', 'rsend']
+tests = ['send-c_stream_size_estimate']
+

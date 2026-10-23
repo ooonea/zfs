@@ -182,6 +182,8 @@ if [ "$1" == "quick" ] ; then
   export RUNFILES="sanity.run"
 fi
 
+export RUNFILES="$HOME/zfs/tests/runfiles/alpine-fixture.run"
+
 export PATH="$PATH:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin"
 case "$OS" in
   freebsd*)
