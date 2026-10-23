@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
 set -u
 exec > /var/tmp/mmp-diagnostic.txt 2>&1
-for ((tick=0; tick<150; tick++)); do
+for ((tick=0; ; tick++)); do
     test -e /var/tmp/mmp-diagnostic.done && exit 0
+    for pid in $(pgrep -x mmp_concurrent_); do
+        date -u
+        printf 'TEST SHELL %s\n' "$pid"
+        cat "/proc/$pid/stat" "/proc/$pid/wchan" "/proc/$pid/syscall" \
+            "/proc/$pid/task/$pid/children"
+        children=()
+        read -r -a children < "/proc/$pid/task/$pid/children"
+        for child in "${children[@]}"; do
+            printf 'TEST CHILD %s\n' "$child"
+            cat "/proc/$child/stat" "/proc/$child/wchan"
+        done
+    done
     if ((tick >= 6 && tick % 6 == 0)); then
         date -u
         ps -eo pid,ppid,stat,wchan:40,comm
@@ -18,17 +30,6 @@ for ((tick=0; tick<150; tick++)); do
                     printf '%s\n' "$task"
                     cat "$task/comm" "$task/wchan" "$task/stack" "$task/syscall"
                 done
-                age=$(ps -o etimes= -p "$pid")
-                age=${age//[[:space:]]/}
-                if [[ "$program" = zhack && "$age" =~ ^[0-9]+$ ]] &&
-                    ((age >= 300)) &&
-                    test ! -e "/var/tmp/mmp-diagnostic-$pid.seen"; then
-                    touch "/var/tmp/mmp-diagnostic-$pid.seen"
-                    printf 'PTRACE stalled zhack PID %s age %s\n' "$pid" "$age"
-                    gdb -batch -ex 'set pagination off' \
-                        -ex 'set print frame-arguments none' \
-                        -ex 'thread apply all bt' -p "$pid"
-                fi
             done
         done
     fi

@@ -262,7 +262,7 @@ config.read([root / "common.run", root / "linux.run"])
 section = "tests/functional/mmp:Linux"
 selected = configparser.ConfigParser(defaults=dict(config.defaults()))
 selected[section] = dict(config[section])
-selected[section]["tests"] = "['mmp_concurrent_import']"
+selected[section]["tests"] = "['mmp_reset_interval', 'multihost_history', 'mmp_on_zdb', 'mmp_write_distribution', 'mmp_hostid', 'mmp_write_slow_disk', 'mmp_concurrent_import']"
 with open("/var/tmp/mmp-diagnostic.run", "w") as stream:
     selected.write(stream)
 PYRUN
