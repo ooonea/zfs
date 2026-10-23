@@ -17,6 +17,7 @@
 #include <stdbool.h>
 
 #include <sys/zap.h>
+#include <sys/u8_textprep.h>
 #include <sys/btree.h>
 typedef struct spa spa_t;	/* forward decl for zap_impl.h */
 #include <sys/zap_impl.h>
@@ -1589,6 +1590,280 @@ static const MunitParameterEnum zap_type_params[] = {
 #define	UNIT_TEST_ZAP_TYPES(name, func)	\
 	UNIT_TEST(name, func, zap_type_params)
 
+static MunitResult
+test_norm_legacy_match_case(const MunitParameter params[], void *arg)
+{
+	(void) arg;
+	struct {
+		const char *stored;
+		const char *query;
+		int form;
+	} pairs[] = {
+		{ "o\xef\xac\x83" "ce", "office", U8_TEXTPREP_NFKD },
+		{ "o\xef\xac\x83" "ce", "office", U8_TEXTPREP_NFKC },
+		{ "\xc7\xb0", "j\xcc\x8c", U8_TEXTPREP_NFD },
+		{ "\xc7\xb0", "j\xcc\x8c", U8_TEXTPREP_NFC },
+	};
+	for (int i = 0; i < ARRAY_SIZE(pairs); i++) {
+		for (int reverse = 0; reverse < 2; reverse++) {
+			const char *stored = reverse ?
+			    pairs[i].query : pairs[i].stored;
+			const char *query = reverse ?
+			    pairs[i].stored : pairs[i].query;
+			dnode_t *dn = mock_zap_create_norm_params(params,
+			    "type", pairs[i].form | U8_TEXTPREP_TOUPPER);
+			dmu_tx_t *tx = (dmu_tx_t *)mock_tx_create();
+			uint64_t value = 42;
+			uint64_t result = 0;
+			unit_ok(zap_add_by_dnode(dn, stored, 8, 1, &value, tx));
+			zap_cursor_t cursor;
+			zap_attribute_t *attribute = zap_attribute_alloc();
+			unit_ok(zap_cursor_init_by_dnode(&cursor, dn));
+			unit_ok(zap_cursor_retrieve(&cursor, attribute));
+			uint64_t before = zap_cursor_serialize(&cursor);
+			zap_cursor_fini(&cursor);
+			if (i < 2) {
+				unit_err(zap_lookup_norm_by_dnode(dn, query,
+				    8, 1, &result, MT_NORMALIZE, NULL, 0, NULL),
+				    ENOENT);
+			}
+			unit_ok(zap_lookup_norm_by_dnode(dn, query, 8, 1,
+			    &result, MT_NORMALIZE | MT_MATCH_CASE,
+			    NULL, 0, NULL));
+			unit_eq(result, value);
+			if (i < 2) {
+				unit_err(zap_lookup_norm_by_dnode(dn, query,
+				    8, 1, &result, MT_NORMALIZE, NULL, 0, NULL),
+				    ENOENT);
+			}
+			if (mock_zap_is_microzap(dn)) {
+				uint16_t upgrade = 0;
+				unit_ok(zap_add_by_dnode(dn, "_upgrade",
+				    2, 1, &upgrade, tx));
+				unit_ok(zap_remove_by_dnode(dn,
+				    "_upgrade", tx));
+				unit_ok(zap_lookup_norm_by_dnode(dn, query,
+				    8, 1, &result, MT_NORMALIZE | MT_MATCH_CASE,
+				    NULL, 0, NULL));
+				unit_eq(result, value);
+			}
+			unit_ok(zap_cursor_init_by_dnode(&cursor, dn));
+			unit_ok(zap_cursor_retrieve(&cursor, attribute));
+			unit_eq(zap_cursor_serialize(&cursor), before);
+			zap_cursor_fini(&cursor);
+			zap_attribute_free(attribute);
+			unit_ok(zap_remove_norm_by_dnode(dn, query,
+			    MT_NORMALIZE | MT_MATCH_CASE, tx));
+			unit_ok(zap_count_by_dnode(dn, &result));
+			unit_zero(result);
+			mock_tx_destroy((mock_dmu_tx_t *)tx);
+			mock_zap_destroy(dn);
+		}
+	}
+	return (MUNIT_OK);
+}
+
+static MunitResult
+test_norm_match_case_conflict(const MunitParameter params[], void *arg)
+{
+	(void) arg;
+	const char *names[] = {
+		"o\xef\xac\x83" "ce", "O\xef\xac\x83" "CE", "office"
+	};
+	dnode_t *dn = mock_zap_create_norm_params(params, "type",
+	    U8_TEXTPREP_NFKD | U8_TEXTPREP_TOUPPER);
+	dmu_tx_t *tx = (dmu_tx_t *)mock_tx_create();
+	for (int i = 0; i < ARRAY_SIZE(names); i++) {
+		uint64_t value = i + 1;
+		unit_ok(zap_add_by_dnode(dn, names[i], 8, 1, &value, tx));
+	}
+	uint64_t result = 0;
+	boolean_t conflict = B_FALSE;
+	matchtype_t match = MT_NORMALIZE | MT_MATCH_CASE;
+	unit_err(zap_lookup_norm_by_dnode(dn, "OFFICE", 8, 1,
+	    &result, match, NULL, 0, &conflict), ENOENT);
+	unit_ok(zap_lookup_norm_by_dnode(dn, "office", 8, 1,
+	    &result, match, NULL, 0, &conflict));
+	unit_true(conflict);
+	unit_ok(zap_lookup_norm_by_dnode(dn, "OffiCE", 8, 1,
+	    &result, match, NULL, 0, &conflict));
+	unit_eq(result, 2);
+	unit_false(conflict);
+	zap_cursor_t cursor;
+	zap_attribute_t *attribute = zap_attribute_alloc();
+	unit_ok(zap_cursor_init_by_dnode(&cursor, dn));
+	for (int i = 0; i < ARRAY_SIZE(names); i++) {
+		unit_ok(zap_cursor_retrieve(&cursor, attribute));
+		unit_eq(attribute->za_normalization_conflict,
+		    strcmp(attribute->za_name, "office") != 0);
+		zap_cursor_advance(&cursor);
+	}
+	unit_err(zap_cursor_retrieve(&cursor, attribute), ENOENT);
+	zap_cursor_fini(&cursor);
+	zap_attribute_free(attribute);
+	unit_ok(zap_remove_by_dnode(dn, names[0], tx));
+	unit_ok(zap_lookup_norm_by_dnode(dn, "OffiCE", 8, 1,
+	    &result, match, NULL, 0, &conflict));
+	unit_eq(result, 2);
+	unit_false(conflict);
+	unit_ok(zap_lookup_norm_by_dnode(dn, "office", 8, 1,
+	    &result, match, NULL, 0, &conflict));
+	unit_eq(result, 3);
+	unit_false(conflict);
+	unit_ok(zap_remove_norm_by_dnode(dn, "OffiCE", match, tx));
+	unit_ok(zap_lookup_by_dnode(dn, "office", 8, 1, &result));
+	unit_eq(result, 3);
+	mock_tx_destroy((mock_dmu_tx_t *)tx);
+	mock_zap_destroy(dn);
+	return (MUNIT_OK);
+}
+
+static MunitResult
+test_norm_match_case_tree(const MunitParameter params[], void *arg)
+{
+	(void) params;
+	(void) arg;
+	dnode_t *dn = mock_zap_create_norm_fatzap(
+	    U8_TEXTPREP_NFKD | U8_TEXTPREP_TOUPPER);
+	dmu_tx_t *tx = (dmu_tx_t *)mock_tx_create();
+	char name[32];
+	for (int i = 0; i < 40; i++) {
+		for (int upper = 0; upper < 2; upper++) {
+			(void) snprintf(name, sizeof (name), "%02d-%s", i,
+			    upper ? "O\xef\xac\x83" "CE" :
+			    "o\xef\xac\x83" "ce");
+			uint64_t value = i * 2 + upper;
+			unit_ok(zap_add_by_dnode(dn, name, 8, 1, &value, tx));
+		}
+	}
+	matchtype_t match = MT_NORMALIZE | MT_MATCH_CASE;
+	for (int upper = 0; upper < 2; upper++) {
+		for (int i = 39; i >= 0; i--) {
+			uint64_t result;
+			(void) snprintf(name, sizeof (name), "%02d-%s", i,
+			    upper ? "OffiCE" : "office");
+			unit_ok(zap_lookup_norm_by_dnode(dn, name,
+			    8, 1, &result, match, NULL, 0, NULL));
+			unit_eq(result, i * 2 + upper);
+			unit_ok(zap_remove_norm_by_dnode(dn, name, match, tx));
+			unit_err(zap_lookup_norm_by_dnode(dn, name,
+			    8, 1, &result, match, NULL, 0, NULL), ENOENT);
+		}
+	}
+	uint64_t count;
+	unit_ok(zap_count_by_dnode(dn, &count));
+	unit_zero(count);
+	zap_t *zap;
+	unit_ok(zap_lock_by_dnode(dn, NULL, RW_READER,
+	    B_TRUE, B_FALSE, FTAG, &zap));
+	unit_true(zap_norm_index_empty(zap));
+	zap_unlock(zap, FTAG);
+	mock_tx_destroy((mock_dmu_tx_t *)tx);
+	mock_zap_destroy(dn);
+	return (MUNIT_OK);
+}
+
+static MunitResult
+test_norm_compare_bounds(const MunitParameter params[], void *arg)
+{
+	(void) params;
+	(void) arg;
+	struct {
+		const char *left;
+		const char *right;
+		size_t length;
+		int result;
+		int error;
+	} pairs[] = {
+		{ "a", "\xff", 0, -1, EILSEQ },
+		{ "\xff", "", 0, 1, 0 },
+		{ "", "\xff", 0, -1, 0 },
+		{ "\xc3", "\xff", 1, -1, EILSEQ },
+		{ "\xff", "\xc3", 1, 1, EINVAL },
+		{ "\xc3\xa9", "", 1, 1, 0 },
+		{ "a", "\xc3\xa9", 1, -1, EINVAL },
+	};
+	int forms[] = { U8_STRCMP_NFD, U8_STRCMP_NFC,
+	    U8_STRCMP_NFKD, U8_STRCMP_NFKC };
+	for (int i = 0; i < ARRAY_SIZE(pairs); i++) {
+		for (int j = 0; j < ARRAY_SIZE(forms); j++) {
+			int error = 0;
+			int result = u8_strcmp(pairs[i].left, pairs[i].right,
+			    pairs[i].length, forms[j] | U8_STRCMP_CI_UPPER,
+			    U8_UNICODE_LATEST, &error);
+			unit_eq((result > 0) - (result < 0), pairs[i].result);
+			unit_eq(error, pairs[i].error);
+		}
+	}
+	int decomposed[] = { U8_STRCMP_NFD, U8_STRCMP_NFKD };
+	for (int i = 0; i < ARRAY_SIZE(decomposed); i++) {
+		int error = 0;
+		int result = u8_strcmp("\xc3\xa9", "e\xcc\x81", 2,
+		    decomposed[i] | U8_STRCMP_CI_UPPER,
+		    U8_UNICODE_LATEST, &error);
+		unit_gt(result, 0);
+		unit_eq(error, EINVAL);
+	}
+	return (MUNIT_OK);
+}
+
+static MunitResult
+test_norm_compare(const MunitParameter params[], void *arg)
+{
+	(void) params;
+	(void) arg;
+	struct {
+		const char *left;
+		const char *right;
+		int form;
+	} pairs[] = {
+		{ "o\xef\xac\x83" "ce", "office", U8_STRCMP_NFKD },
+		{ "o\xef\xac\x83" "ce", "office", U8_STRCMP_NFKC },
+		{ "\xc7\xb0", "j\xcc\x8c", U8_STRCMP_NFD },
+		{ "\xc7\xb0", "j\xcc\x8c", U8_STRCMP_NFC },
+		{ "\xc7\xb0", "j\xcc\x8c", U8_STRCMP_NFKD },
+		{ "\xc7\xb0", "j\xcc\x8c", U8_STRCMP_NFKC },
+	};
+	int cases[] = { U8_STRCMP_CS, U8_STRCMP_CI_UPPER };
+
+	for (int i = 0; i < ARRAY_SIZE(pairs); i++) {
+		for (int j = 0; j < ARRAY_SIZE(cases); j++) {
+			char left[128];
+			char right[128];
+			int flags = pairs[i].form |
+			    (cases[j] & U8_STRCMP_CI_UPPER);
+			for (int k = 0; k < 2; k++) {
+				const char *input = k ?
+				    pairs[i].right : pairs[i].left;
+				char *output = k ? right : left;
+				size_t in = strlen(input);
+				size_t out = sizeof (left) - 1;
+				int error = 0;
+				unit_ne(u8_textprep_str((char *)input, &in,
+				    output, &out, flags, U8_UNICODE_LATEST,
+				    &error), (size_t)-1);
+				unit_zero(error);
+				unit_zero(in);
+				output[sizeof (left) - 1 - out] = '\0';
+			}
+			int expected = strcmp(left, right);
+			expected = (expected > 0) - (expected < 0);
+			int error = 0;
+			int result = u8_strcmp(pairs[i].left, pairs[i].right,
+			    0, pairs[i].form | cases[j],
+			    U8_UNICODE_LATEST, &error);
+			munit_assert_int(error, ==, 0);
+			unit_eq((result > 0) - (result < 0), expected);
+			result = u8_strcmp(pairs[i].right, pairs[i].left,
+			    0, pairs[i].form | cases[j],
+			    U8_UNICODE_LATEST, &error);
+			munit_assert_int(error, ==, 0);
+			unit_eq((result > 0) - (result < 0), -expected);
+		}
+	}
+	return (MUNIT_OK);
+}
+
 static const MunitTest zap_tests[] = {
 	UNIT_TEST("mock_microzap_sanity",	test_mock_microzap_sanity),
 	UNIT_TEST("mock_fatzap_sanity",		test_mock_fatzap_sanity),
@@ -1629,6 +1904,13 @@ static const MunitTest zap_tests[] = {
 	UNIT_TEST_ZAP_TYPES(
 	    "zap_value_search_mask",	test_zap_value_search_mask),
 
+	UNIT_TEST("norm_compare",		test_norm_compare),
+	UNIT_TEST("norm_compare_bounds",	test_norm_compare_bounds),
+	UNIT_TEST("norm_legacy_match_case", test_norm_legacy_match_case,
+	    zap_type_params),
+	UNIT_TEST("norm_match_case_conflict", test_norm_match_case_conflict,
+	    zap_type_params),
+	UNIT_TEST("norm_match_case_tree", test_norm_match_case_tree),
 	UNIT_TEST("norm_toupper",	test_norm_toupper, zap_type_params),
 	UNIT_TEST("norm_match_case",	test_norm_match_case, zap_type_params),
 	UNIT_TEST("norm_nfc",		test_norm_nfc, zap_type_params),

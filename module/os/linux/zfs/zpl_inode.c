@@ -27,6 +27,7 @@
 #include <sys/vfs.h>
 #include <sys/zpl.h>
 #include <sys/file.h>
+#include <sys/u8_textprep.h>
 
 static struct dentry *
 zpl_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
@@ -67,9 +68,11 @@ zpl_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
 	crhold(cr);
 	cookie = spl_fstrans_mark();
 
-	/* If we are a case insensitive fs, we need the real name */
-	if (zfsvfs->z_case == ZFS_CASE_INSENSITIVE) {
+	/* Normalization and case folding both require the stored name. */
+	if (zfsvfs->z_case == ZFS_CASE_INSENSITIVE)
 		zfs_flags = FIGNORECASE;
+	if (zfsvfs->z_case == ZFS_CASE_INSENSITIVE ||
+	    (zfsvfs->z_norm & ~U8_TEXTPREP_TOUPPER)) {
 		pn_alloc(&pn);
 		ppn = &pn;
 	}
@@ -86,7 +89,7 @@ zpl_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
 
 	if (error) {
 		/*
-		 * If we have a case sensitive fs, we do not want to
+		 * If names can normalize to the same entry, do not
 		 * insert negative entries, so return NULL for ENOENT.
 		 * Fall through if the error is not ENOENT. Also free memory.
 		 */
@@ -104,7 +107,7 @@ zpl_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
 	ip = ZTOI(zp);
 
 	/*
-	 * If we are case insensitive, call the correct function
+	 * If names are normalized, call the correct function
 	 * to install the name.
 	 */
 	if (ppn) {
@@ -323,10 +326,11 @@ zpl_unlink(struct inode *dir, struct dentry *dentry)
 	error = -zfs_remove(ITOZ(dir), dname(dentry), cr, 0);
 
 	/*
-	 * For a CI FS we must invalidate the dentry to prevent the
+	 * For normalized names, invalidate the dentry to prevent the
 	 * creation of negative entries.
 	 */
-	if (error == 0 && zfsvfs->z_case == ZFS_CASE_INSENSITIVE)
+	if (error == 0 && (zfsvfs->z_case == ZFS_CASE_INSENSITIVE ||
+	    (zfsvfs->z_norm & ~U8_TEXTPREP_TOUPPER)))
 		d_invalidate(dentry);
 
 	spl_fstrans_unmark(cookie);
@@ -402,10 +406,11 @@ zpl_rmdir(struct inode *dir, struct dentry *dentry)
 	error = -zfs_rmdir(ITOZ(dir), dname(dentry), NULL, cr, 0);
 
 	/*
-	 * For a CI FS we must invalidate the dentry to prevent the
+	 * For normalized names, invalidate the dentry to prevent the
 	 * creation of negative entries.
 	 */
-	if (error == 0 && zfsvfs->z_case == ZFS_CASE_INSENSITIVE)
+	if (error == 0 && (zfsvfs->z_case == ZFS_CASE_INSENSITIVE ||
+	    (zfsvfs->z_norm & ~U8_TEXTPREP_TOUPPER)))
 		d_invalidate(dentry);
 
 	spl_fstrans_unmark(cookie);

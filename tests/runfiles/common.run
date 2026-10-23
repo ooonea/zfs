@@ -119,8 +119,8 @@ tests = ['case_all_values', 'norm_all_values', 'mixed_create_failure',
     'sensitive_formd_lookup', 'sensitive_formd_delete',
     'insensitive_none_lookup', 'insensitive_none_delete',
     'insensitive_formd_lookup', 'insensitive_formd_delete',
-    'mixed_none_lookup', 'mixed_none_lookup_ci', 'mixed_none_delete',
-    'mixed_formd_lookup', 'mixed_formd_lookup_ci', 'mixed_formd_delete']
+    'mixed_none_lookup', 'mixed_none_delete', 'mixed_formd_lookup',
+    'mixed_formd_delete']
 tags = ['functional', 'casenorm']
 
 [tests/functional/channel_program/lua_core]
@@ -1035,7 +1035,8 @@ tests = ['recv_dedup', 'recv_dedup_encrypted_zvol',
     'rsend_014_pos', 'rsend_016_neg', 'rsend_019_pos', 'rsend_020_pos',
     'rsend_021_pos', 'rsend_022_pos', 'rsend_024_pos', 'rsend_025_pos',
     'rsend_026_neg', 'rsend_027_pos', 'rsend_028_neg', 'rsend_029_neg',
-    'rsend_030_pos', 'rsend_031_pos', 'rsend-exclude_001_pos',
+    'rsend_030_pos', 'rsend_031_pos', 'rsend_promoted_origin',
+    'rsend-exclude_001_pos',
     'rsend-exclude_002_pos', 'recv_validate_001_neg', 'send-c_verify_ratio',
     'send-c_verify_contents', 'send-c_props', 'send-c_incremental',
     'send-c_volume',

@@ -7996,10 +7996,9 @@ spa_export_common(const char *pool, int new_state, nvlist_t **oldconfig,
 	 * modify its state.  Objsets may be open only because they're dirty,
 	 * so we have to force it to sync before checking spa_refcnt.
 	 */
-	if (spa->spa_sync_on) {
+	if (spa->spa_sync_on)
 		txg_wait_synced(spa->spa_dsl_pool, 0);
-		spa_evicting_os_wait(spa);
-	}
+	spa_evicting_os_wait(spa);
 
 	/*
 	 * A pool cannot be exported or destroyed if there are active
@@ -8525,6 +8524,11 @@ spa_vdev_attach(spa_t *spa, uint64_t guid, nvlist_t *nvroot, int replacing,
 
 	if (oldvd == NULL)
 		return (spa_vdev_exit(spa, NULL, txg, ENODEV));
+
+	/* Do not spare a device repaired by a concurrent clear. */
+	if (nvlist_exists(nvroot, ZPOOL_CONFIG_REPLACE_IF_UNHEALTHY) &&
+	    oldvd->vdev_state == VDEV_STATE_HEALTHY)
+		return (spa_vdev_exit(spa, NULL, txg, EBUSY));
 
 	boolean_t raidz = oldvd->vdev_ops == &vdev_raidz_ops;
 

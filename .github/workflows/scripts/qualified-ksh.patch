@@ -1,0 +1,42 @@
+diff --git a/NEWS b/NEWS
+index c0721d90..cb7a61cf 100644
+--- a/NEWS
++++ b/NEWS
+@@ -6,0 +7,7 @@ Uppercase BUG_* IDs are shell bug IDs as used by the Modernish shell library.
++- Fixed an unterminated collation sentinel key that could cause an
++  out-of-bounds copy when compiling an equivalence class such as [[=z=]].
++
++- Fixed process substitution failures after fork on systems using POSIX
++  timers. Child processes now create their own timer instead of reusing
++  the parent's timer ID, which is not inherited.
++
+diff --git a/src/cmd/ksh93/sh/timers.c b/src/cmd/ksh93/sh/timers.c
+index a65a6710..9093c1c5 100644
+--- a/src/cmd/ksh93/sh/timers.c
++++ b/src/cmd/ksh93/sh/timers.c
+@@ -69 +69 @@ static Sfdouble_t setalarm(Sfdouble_t t)
+-	static char created;
++	static pid_t created;
+@@ -70,0 +71,2 @@ static Sfdouble_t setalarm(Sfdouble_t t)
++	if(created != getpid())
++		created = 0;
+@@ -88 +90 @@ static Sfdouble_t setalarm(Sfdouble_t t)
+-		created = 1;
++		created = getpid();
+diff --git a/src/cmd/ksh93/tests/basic.sh b/src/cmd/ksh93/tests/basic.sh
+index 3429935c..1278fb40 100755
+--- a/src/cmd/ksh93/tests/basic.sh
++++ b/src/cmd/ksh93/tests/basic.sh
+@@ -711 +711,5 @@ then	if	[[ ! $(uname -s) =~ ^SunOS$ ]] &&
+-		getCmdline "$!"
++		for ((i=0; i<100; i++))
++		do	getCmdline "$!"
++			[[ $actual == "$expect" ]] && break
++			sleep .01
++		done
+diff --git a/src/lib/libast/regex/regcomp.c b/src/lib/libast/regex/regcomp.c
+index 7a1fa5b4..0bd7e797 100644
+--- a/src/lib/libast/regex/regcomp.c
++++ b/src/lib/libast/regex/regcomp.c
+@@ -1430,0 +1431 @@ bra(Cenv_t* env)
++				cc->key[COLL_KEY_MAX] = 0;
