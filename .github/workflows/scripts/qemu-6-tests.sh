@@ -252,7 +252,9 @@ RV=0
 KMEMLEAK=""
 grep -qw kmemleak=on /proc/cmdline && KMEMLEAK="-m"
 test "$OS" = ubuntu22
-python3 - "$TDIR" <<'PYRUN'
+DIAGNOSTIC=/var/tmp/mmp-lifecycle
+mkdir "$DIAGNOSTIC"
+python3 - "$TDIR" "$DIAGNOSTIC" <<'PYRUN'
 import configparser
 import sys
 from pathlib import Path
@@ -263,16 +265,50 @@ section = "tests/functional/mmp:Linux"
 selected = configparser.ConfigParser(defaults=dict(config.defaults()))
 selected[section] = dict(config[section])
 selected[section]["tests"] = "['mmp_reset_interval', 'multihost_history', 'mmp_on_zdb', 'mmp_write_distribution', 'mmp_hostid', 'mmp_write_slow_disk', 'mmp_concurrent_import']"
-with open("/var/tmp/mmp-diagnostic.run", "w") as stream:
+with open(Path(sys.argv[2]) / "context.run", "w") as stream:
+    selected.write(stream)
+selected[section]["tests"] = "['mmp_concurrent_import']"
+with open(Path(sys.argv[2]) / "repeat.run", "w") as stream:
     selected.write(stream)
 PYRUN
-cp /var/tmp/mmp-diagnostic.run /var/tmp/mmp-diagnostic-runfile.txt
-sudo bash "$HOME/zfs/.github/workflows/scripts/qemu-mmp-monitor.sh" &
+sudo python3 "$HOME/zfs/.github/workflows/scripts/qemu-mmp-monitor.py" \
+    "$DIAGNOSTIC" "$$" &
 monitor=$!
-$TDIR/zfs-tests.sh -vKO $KMEMLEAK -s 3GB \
-    -r /var/tmp/mmp-diagnostic.run -T functional || RV=$?
-touch /var/tmp/mmp-diagnostic.done
-wait "$monitor"
+SECONDS=0
+while [[ ! -e "$DIAGNOSTIC/ready" && ! -e "$DIAGNOSTIC/failed" ]]; do
+    if ((SECONDS > 150)); then
+        echo "Monitor did not become ready" > "$DIAGNOSTIC/failed"
+        break
+    fi
+    sleep 1
+done
+for ((iteration=1; iteration<=12; iteration++)); do
+    if [[ -e "$DIAGNOSTIC/failed" ]]; then
+        RV=1
+        break
+    fi
+    if ((SECONDS > 3900)); then
+        echo "Stopped before another 1200-second test: time budget" \
+            > "$DIAGNOSTIC/budget-stop.txt"
+        RV=1
+        break
+    fi
+    iteration_dir=$(printf '%s/iteration-%02d' "$DIAGNOSTIC" "$iteration")
+    mkdir -p "$iteration_dir/work"
+    chmod 1777 "$iteration_dir/work"
+    runfile="$DIAGNOSTIC/repeat.run"
+    ((iteration == 1)) && runfile="$DIAGNOSTIC/context.run"
+    cp "$runfile" "$iteration_dir/selected.run"
+    FILEDIR="$iteration_dir/work" $TDIR/zfs-tests.sh -vKO $KMEMLEAK -s 3GB \
+        -r "$runfile" -T functional || RV=$?
+    echo "$RV" > "$iteration_dir/exitcode.txt"
+    if [[ -d /var/tmp/test_results/current ]]; then
+        cp -a /var/tmp/test_results/current/. "$iteration_dir/results"
+    fi
+    [[ "$RV" == 0 ]] || break
+done
+touch "$DIAGNOSTIC/done"
+wait "$monitor" || RV=1
 
 
 df -h > df-postrun.txt

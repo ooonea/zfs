@@ -96,6 +96,7 @@ jobs:
               os_json=$(echo ${os_selection} | jq -c)
           fi
 
+          os_json='["ubuntu22"]'
           echo "os=$os_json" | tee -a $GITHUB_OUTPUT
           echo "ci_type=$ci_type" | tee -a $GITHUB_OUTPUT
 
@@ -174,7 +175,7 @@ jobs:
 
     - name: Run tests
       if: env.REUSED_JOB == ''
-      timeout-minutes: 300
+      timeout-minutes: 90
       run: .github/workflows/scripts/qemu-6-tests.sh
       env:
         CI_TYPE: ${{ needs.test-config.outputs.ci_type }}
